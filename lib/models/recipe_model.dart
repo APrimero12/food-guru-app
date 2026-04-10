@@ -1,5 +1,5 @@
-import 'package:appdevproject/models/comments_model.dart';
-import 'package:appdevproject/models/user_model.dart';
+import 'comments_model.dart';
+import 'user_model.dart';
 
 class RecipeModel {
 

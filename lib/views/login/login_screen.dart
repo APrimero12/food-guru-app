@@ -13,6 +13,7 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.orange,
       ),
       home: SignInPage(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -48,7 +49,7 @@ class _SignInPageState extends State<SignInPage> {
                   Center(
                     child: CircleAvatar(
                       radius: 30,
-                      backgroundColor: Colors.orange,
+                      backgroundColor: Colors.deepOrangeAccent,
                       child: Icon(
                         Icons.soup_kitchen,
                         color: Colors.white,
@@ -61,11 +62,12 @@ class _SignInPageState extends State<SignInPage> {
                     child: Text(
                       'Welcome Back',
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 28,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
+                  SizedBox(height: 10,),
                   Center(
                     child: Text(
                       'Sign in to FoodGuru to continue sharing recipes',
@@ -73,24 +75,24 @@ class _SignInPageState extends State<SignInPage> {
                     ),
                   ),
                   SizedBox(height: 20),
-                  Text('Email'),
+                  Text('Email', style: TextStyle(fontWeight: FontWeight.bold),),
+                  SizedBox(height: 4,),
                   TextField(
                     controller: _emailController,
                     decoration: InputDecoration(
-                      hintText: 'example@email.com',
+                      hintText: '',
                       border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.email),
                     ),
                     keyboardType: TextInputType.emailAddress,
                   ),
                   SizedBox(height: 16),
-                  Text('Password'),
+                  Text('Password', style: TextStyle(fontWeight: FontWeight.bold),),
+                  SizedBox(height: 4,),
                   TextField(
                     controller: _passwordController,
                     decoration: InputDecoration(
-                      hintText: '********',
+                      hintText: '',
                       border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.lock),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _isPasswordVisible
@@ -111,24 +113,22 @@ class _SignInPageState extends State<SignInPage> {
                     onPressed: () {
                       // Sign-in logic here
                     },
-                    style: ButtonStyle(
-                      backgroundColor: MaterialStateProperty.all(Colors.orange),
-                      padding: MaterialStateProperty.all(
-                        EdgeInsets.symmetric(vertical: 15),
-                      ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      padding: EdgeInsets.all(15)
                     ),
                     child: Center(
                       child: Text(
                         'Sign In',
-                        style: TextStyle(fontSize: 18),
+                        style: TextStyle(fontSize: 18, color: Colors.white),
                       ),
                     ),
                   ),
-                  SizedBox(height: 20),
+                  SizedBox(height: 40),
                   Center(
                     child: GestureDetector(
                       onTap: () {
-                        // Navigate to SignUp page or show sign-up form
+                        // TODO: Navigate to SignUp page or show sign-up form
                       },
                       child: Text(
                         "Don't have an account? Sign up",
