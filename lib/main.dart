@@ -1,7 +1,10 @@
+import 'package:appdevproject/views/explore/explore_page.dart';
+import 'package:appdevproject/views/login/login_screen.dart';
+import 'package:appdevproject/views/login/signup_screen.dart';
 import 'package:flutter/material.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -9,8 +12,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-
+    return MaterialApp(
+      initialRoute: '/',
+      routes: {
+        '/' : (context) => SignInPage(),
+        '/signup' : (context) => SignUpScreen(),
+        '/home' : (context) => MyExplorePage()
+      },
     );
   }
 }
