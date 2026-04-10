@@ -10,6 +10,8 @@ class MyExplorePage extends StatefulWidget {
 class _MyExplorePageState extends State<MyExplorePage> {
   @override
   Widget build(BuildContext context) {
-    return const Placeholder();
+    return Scaffold(
+      body: Text('MY EXPLORE PAGE TESTING'),
+    );
   }
 }

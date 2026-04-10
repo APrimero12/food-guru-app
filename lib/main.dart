@@ -1,3 +1,6 @@
+import 'package:appdevproject/views/explore/explore_page.dart';
+import 'package:appdevproject/views/login/login_screen.dart';
+import 'package:appdevproject/views/login/signup_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart'; // Import the generated file
@@ -7,7 +10,7 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp(const MyApp());
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -15,7 +18,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Placeholder();
+    return MaterialApp(
+      initialRoute: '/',
+      routes: {
+        '/' : (context) => SignInPage(),
+        '/signup' : (context) => SignUpScreen(),
+        '/home' : (context) => MyExplorePage()
+      },
+    );
   }
 }
-

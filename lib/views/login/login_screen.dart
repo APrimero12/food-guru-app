@@ -1,23 +1,5 @@
 import 'package:flutter/material.dart';
 
-void main() {
-  runApp(MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'FoodGuru Login',
-      theme: ThemeData(
-        primarySwatch: Colors.orange,
-      ),
-      home: SignInPage(),
-      debugShowCheckedModeBanner: false,
-    );
-  }
-}
-
 class SignInPage extends StatefulWidget {
   @override
   _SignInPageState createState() => _SignInPageState();
@@ -36,6 +18,7 @@ class _SignInPageState extends State<SignInPage> {
         padding: const EdgeInsets.all(16.0),
         child: Center(
           child: Card(
+            color: Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -111,7 +94,14 @@ class _SignInPageState extends State<SignInPage> {
                   SizedBox(height: 20),
                   ElevatedButton(
                     onPressed: () {
-                      // Sign-in logic here
+                      /*
+                      TODO: MAKE CHECKS WITH CONTROLLERS WITH EXISTING LOGINS
+                       * FROM DATABASE BEFORE GOING INTO HOME PAGE
+                       *
+                       * HAVE IT ALSO HAVE A LOADING BEFORE ENTERING
+                       */
+
+                      Navigator.pushNamed(context, '/home');
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black,
@@ -128,7 +118,8 @@ class _SignInPageState extends State<SignInPage> {
                   Center(
                     child: GestureDetector(
                       onTap: () {
-                        // TODO: Navigate to SignUp page or show sign-up form
+                        Navigator.pushNamed(context, '/signup');
+                        // TODO: ADD SMOOTHER ANIMATION
                       },
                       child: Text(
                         "Don't have an account? Sign up",
