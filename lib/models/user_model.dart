@@ -1,18 +1,18 @@
 class UserModel {
 
   int userId;
-  String email;
+  String name;
   String username;
+  String email;
   String password;
-  String fName;
-  String lName;
+  String avatar;
+  String bio;
 
-  UserModel(this.userId, this.email, this.username, this.password, this.fName,
-      this.lName);
+  UserModel(this.userId, this.name, this.username, this.email, this.password,
+      this.avatar, this.bio);
 
   @override
   String toString() {
-    return 'UserModel{userId: $userId, email: $email, username: $username, password: $password, fName: $fName, lName: $lName}';
+    return 'UserModel{userId: $userId, name: $name, username: $username, email: $email, password: $password, avatar: $avatar, bio: $bio}';
   }
-
 }

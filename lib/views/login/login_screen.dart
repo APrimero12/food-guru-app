@@ -50,7 +50,7 @@ class _SignInPageState extends State<SignInPage> {
                       radius: 30,
                       backgroundColor: Colors.orange,
                       child: Icon(
-                        Icons.youtube_searched_for,
+                        Icons.soup_kitchen,
                         color: Colors.white,
                         size: 30,
                       ),
@@ -77,7 +77,7 @@ class _SignInPageState extends State<SignInPage> {
                   TextField(
                     controller: _emailController,
                     decoration: InputDecoration(
-                      hintText: 'your@email.com',
+                      hintText: 'example@email.com',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.email),
                     ),
