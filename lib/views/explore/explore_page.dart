@@ -13,15 +13,23 @@ class _MyExplorePageState extends State<MyExplorePage> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    final crossAxisCount =
+    screenWidth > 1100 ? 3 : (screenWidth > 700 ? 2 : 1);
+
+    final cardRatio =
+    screenWidth > 1100 ? 0.68 : (screenWidth > 700 ? 0.72 : 0.90);
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         title: Row(
-          children: [
-            const Icon(Icons.restaurant_menu, color: Colors.orange),
-            const SizedBox(width: 8),
-            const Text(
+          children: const [
+            Icon(Icons.restaurant_menu, color: Colors.orange),
+            SizedBox(width: 8),
+            Text(
               'FoodGuru',
               style: TextStyle(
                 color: Colors.black,
@@ -60,7 +68,7 @@ class _MyExplorePageState extends State<MyExplorePage> {
                     textAlign: TextAlign.center,
                   ),
                 ),
-              )
+              ),
             ],
           ),
         ],
@@ -87,17 +95,19 @@ class _MyExplorePageState extends State<MyExplorePage> {
               GridView.count(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: MediaQuery.of(context).size.width > 900 ? 3 : (MediaQuery.of(context).size.width > 600 ? 2 : 1),
-                childAspectRatio: 0.8,
+                crossAxisCount: crossAxisCount,
+                childAspectRatio: cardRatio,
                 mainAxisSpacing: 16,
                 crossAxisSpacing: 16,
                 children: const [
                   RecipeCard(
-                    imageUrl: 'https://images.unsplash.com/photo-1473093226795-af9932fe5856?auto=format&fit=crop&w=800&q=80',
+                    imageUrl:
+                    'https://images.unsplash.com/photo-1473093226795-af9932fe5856?auto=format&fit=crop&w=800&q=80',
                     userName: 'Uncle Roger',
-                    userAvatar: 'https://i.pravatar.cc/150?u=uncleroger',
+                    userAvatar: '',
                     title: 'Classic Pasta Carbonara',
-                    description: 'An authentic Italian pasta dish with crispy pancetta, eggs, and Parmesan cheese. Simple yet incredibly delicious!',
+                    description:
+                    'An authentic Italian pasta dish with crispy pancetta, eggs, and Parmesan cheese. Simple yet incredibly delicious!',
                     time: '30m',
                     servings: '4',
                     tags: ['vegetarian'],
@@ -105,11 +115,13 @@ class _MyExplorePageState extends State<MyExplorePage> {
                     isLiked: true,
                   ),
                   RecipeCard(
-                    imageUrl: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=800&q=80',
+                    imageUrl:
+                    'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=800&q=80',
                     userName: 'Gordon Ramsay',
-                    userAvatar: 'https://i.pravatar.cc/150?u=gordon',
+                    userAvatar: '',
                     title: 'Vibrant Buddha Bowl',
-                    description: 'A nutritious and colorful plant-based bowl packed with quinoa, roasted vegetables, and tahini dressing.',
+                    description:
+                    'A nutritious and colorful plant-based bowl packed with quinoa, roasted vegetables, and tahini dressing.',
                     time: '50m',
                     servings: '2',
                     tags: ['vegan', 'gluten-free'],
@@ -117,11 +129,13 @@ class _MyExplorePageState extends State<MyExplorePage> {
                     isLiked: true,
                   ),
                   RecipeCard(
-                    imageUrl: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?auto=format&fit=crop&w=800&q=80',
+                    imageUrl:
+                    'https://images.unsplash.com/photo-1547592166-23ac45744acd?auto=format&fit=crop&w=800&q=80',
                     userName: 'Angelo Primero',
-                    userAvatar: 'https://i.pravatar.cc/150?u=angelo',
+                    userAvatar: '',
                     title: 'Authentic Bun Bo Hue',
-                    description: 'Traditional Vietnamese spicy beef noodle soup from Hue with aromatic lemongrass, tender beef, and rice vermicelli.',
+                    description:
+                    'Traditional Vietnamese spicy beef noodle soup from Hue with aromatic lemongrass, tender beef, and rice vermicelli.',
                     time: '210m',
                     servings: '6',
                     tags: [],
@@ -129,11 +143,13 @@ class _MyExplorePageState extends State<MyExplorePage> {
                     isLiked: false,
                   ),
                   RecipeCard(
-                    imageUrl: 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?auto=format&fit=crop&w=800&q=80',
+                    imageUrl:
+                    'https://images.unsplash.com/photo-1467003909585-2f8a72700288?auto=format&fit=crop&w=800&q=80',
                     userName: 'James Miller',
-                    userAvatar: 'https://i.pravatar.cc/150?u=james',
+                    userAvatar: '',
                     title: 'Herb-Crusted Grilled Salmon',
-                    description: 'Perfectly grilled salmon with a crispy herb crust. Healthy, elegant, and ready in 20 minutes!',
+                    description:
+                    'Perfectly grilled salmon with a crispy herb crust. Healthy, elegant, and ready in 20 minutes!',
                     time: '25m',
                     servings: '4',
                     tags: ['gluten-free', 'pescatarian'],
@@ -141,11 +157,13 @@ class _MyExplorePageState extends State<MyExplorePage> {
                     isLiked: true,
                   ),
                   RecipeCard(
-                    imageUrl: 'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=800&q=80',
+                    imageUrl:
+                    'https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=800&q=80',
                     userName: 'Uncle Roger',
-                    userAvatar: 'https://i.pravatar.cc/150?u=uncleroger2',
+                    userAvatar: '',
                     title: 'Fresh Greek Salad',
-                    description: 'A refreshing Mediterranean salad with crisp vegetables, feta cheese, and tangy vinaigrette.',
+                    description:
+                    'A refreshing Mediterranean salad with crisp vegetables, feta cheese, and tangy vinaigrette.',
                     time: '15m',
                     servings: '4',
                     tags: ['vegetarian', 'gluten-free'],
@@ -153,11 +171,13 @@ class _MyExplorePageState extends State<MyExplorePage> {
                     isLiked: false,
                   ),
                   RecipeCard(
-                    imageUrl: 'https://images.unsplash.com/photo-1528207776546-365bb710ee93?auto=format&fit=crop&w=800&q=80',
+                    imageUrl:
+                    'https://images.unsplash.com/photo-1528207776546-365bb710ee93?auto=format&fit=crop&w=800&q=80',
                     userName: 'Angelo Primero',
-                    userAvatar: 'https://i.pravatar.cc/150?u=angelo2',
+                    userAvatar: '',
                     title: 'Fluffy Blueberry Pancakes',
-                    description: 'Light and fluffy pancakes bursting with fresh blueberries. The perfect weekend breakfast!',
+                    description:
+                    'Light and fluffy pancakes bursting with fresh blueberries. The perfect weekend breakfast!',
                     time: '25m',
                     servings: '4',
                     tags: ['vegetarian'],
