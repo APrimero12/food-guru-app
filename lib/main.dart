@@ -50,9 +50,48 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// 4. Create an AuthWrapper to listen to authentication changes
-class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({super.key}); // Added const constructor
+// MODIFIED: AuthWrapper is now a StatefulWidget
+class AuthWrapper extends StatefulWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  // Flag to ensure our initial server-side validation runs only once
+  bool _initialCheckPerformed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Schedule the initial auth check to run after the first frame is built
+    // This ensures `context` is available for `Provider.of`
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _performInitialAuthCheck();
+    });
+  }
+
+  Future<void> _performInitialAuthCheck() async {
+    // Prevent multiple executions if hot-reloaded or widget rebuilds quickly
+    if (_initialCheckPerformed) return;
+
+    final authService = Provider.of<AuthService>(context, listen: false);
+
+    // If Firebase Auth has a cached user, proactively ask Firebase server
+    // to confirm if the user is still valid (e.g., not deleted).
+    if (authService.currentUser != null) {
+      print('AuthWrapper: Cached user found. Performing server-side validation...');
+      await authService.refreshCurrentUser(); // This will force a sign-out if user is deleted
+    }
+
+    // Mark the check as performed so we don't block the UI unnecessarily on subsequent rebuilds
+    if (mounted) { // Check if the widget is still in the tree before calling setState
+      setState(() {
+        _initialCheckPerformed = true;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,20 +99,23 @@ class AuthWrapper extends StatelessWidget {
     final authService = Provider.of<AuthService>(context);
 
     // StreamBuilder listens to authStateChanges from AuthService
-    return StreamBuilder<User?>( // 'User?' comes from firebase_auth
+    return StreamBuilder<User?>(
       stream: authService.authStateChanges,
       builder: (context, snapshot) {
-        // Handle connection states (e.g., waiting for Firebase to check auth status)
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        // Show loading indicator while Firebase initializes OR while our initial server check is running
+        // The `_initialCheckPerformed` flag ensures we don't jump to the login page prematurely
+        if (snapshot.connectionState == ConnectionState.waiting || !_initialCheckPerformed) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        // If data is available and the user is null, show the login page
+        // If snapshot.data is null, it means no user is logged in (or was just signed out by refreshCurrentUser)
         if (snapshot.data == null) {
-          return SignInPage(); // Assuming SignInPage is your LoginPage
+          print('AuthWrapper: No user logged in, showing LoginPage.');
+          return SignInPage(); // Use const LoginPage() if your LoginPage constructor is const
         } else {
           // If a user is logged in, show the home page
-          return MyExplorePage();
+          print('AuthWrapper: User is logged in (${snapshot.data!.uid}), showing HomeNavigation.');
+          return const MyExplorePage(); // Assuming MyExplorePage is HomeNavigation
         }
       },
     );
