@@ -25,7 +25,7 @@ class _MyExplorePageState extends State<MyExplorePage> {
   int _bottomNavIndex = 0; // Tracks the selected item in the BottomNavigationBar
   AppView _currentAppView = AppView.homeTabs; // Tracks the currently displayed main view
 
-  // IMPORTANT: This list now represents ONLY the pages accessible via the BottomNavigationBar
+  //This list now represents ONLY the pages accessible via the BottomNavigationBar
   final List<Widget> _bottomNavPages = const [
     ExploreContent(),
     FriendsPage(),

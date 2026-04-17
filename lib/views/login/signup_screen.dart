@@ -11,6 +11,8 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
+  final _fullNameController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -22,6 +24,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -30,11 +34,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   Future<void> _signUp() async {
     final authService = Provider.of<AuthService>(context, listen: false); // Access AuthService via Provider
+
+    final fullName = _fullNameController.text.trim();
+    final username = _usernameController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirm = _confirmPasswordController.text;
 
-    if (email.isEmpty || password.isEmpty || confirm.isEmpty) {
+    if (fullName.isEmpty || username.isEmpty || email.isEmpty
+        || password.isEmpty || confirm.isEmpty) {
       setState(() => _errorMessage = 'Please fill in all fields.');
       return;
     }
@@ -163,6 +171,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ),
                     SizedBox(height: 24),
+                    // User sign up full name inputs
+                    Text('Full Name', style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(height: 4),
+                    TextField(
+                      controller: _fullNameController,
+                      decoration: InputDecoration(border: OutlineInputBorder()),
+                      keyboardType: TextInputType.name,
+                      enabled: !_isLoading,
+                    ),
+                    // user username inputs
+                    Text('Username', style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(height: 4),
+                    TextField(
+                      controller: _usernameController,
+                      decoration: InputDecoration(border: OutlineInputBorder()),
+                      keyboardType: TextInputType.name,
+                      enabled: !_isLoading,
+                    ),
+                    // user email inputs
                     Text('Email', style: TextStyle(fontWeight: FontWeight.bold)),
                     SizedBox(height: 4),
                     TextField(
@@ -172,6 +199,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       enabled: !_isLoading,
                     ),
                     SizedBox(height: 16),
+                    // user password inputs
                     Text('Password', style: TextStyle(fontWeight: FontWeight.bold)),
                     SizedBox(height: 4),
                     TextField(
@@ -190,6 +218,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       enabled: !_isLoading,
                     ),
                     SizedBox(height: 16),
+                    // user confirm password inputs
                     Text('Confirm Password',
                         style: TextStyle(fontWeight: FontWeight.bold)),
                     SizedBox(height: 4),
