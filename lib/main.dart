@@ -1,4 +1,4 @@
-import 'package:appdevproject/views/explore/explore_page.dart';
+import 'package:appdevproject/views/home_navigation.dart';
 import 'package:appdevproject/views/login/login_screen.dart';
 import 'package:appdevproject/views/login/signup_screen.dart';
 import 'package:flutter/material.dart';

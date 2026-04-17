@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-class FriendsPage extends StatefulWidget {
-  const FriendsPage({super.key});
+class AddRecipe extends StatefulWidget {
+  const AddRecipe({super.key});
 
   @override
-  State<FriendsPage> createState() => _FriendsPageState();
+  State<AddRecipe> createState() => _AddRecipeState();
 }
 
-class _FriendsPageState extends State<FriendsPage> {
+class _AddRecipeState extends State<AddRecipe> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -17,7 +17,7 @@ class _FriendsPageState extends State<FriendsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Friend PAGE GOOD')
+              Text('ADD RECIPE PAGE GOOD')
             ],
           ),
         ),
@@ -25,4 +25,3 @@ class _FriendsPageState extends State<FriendsPage> {
     );
   }
 }
-
