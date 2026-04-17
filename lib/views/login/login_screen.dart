@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // Import provider
 import '../../services/auth.dart';
 
 class SignInPage extends StatefulWidget {
@@ -10,7 +11,7 @@ class SignInPage extends StatefulWidget {
 class _SignInPageState extends State<SignInPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _authService = AuthService();
+  // Removed: final _authService = AuthService(); // Will be accessed via Provider
   bool _isPasswordVisible = false;
   bool _isLoading = false;
   String? _errorMessage;
@@ -23,6 +24,7 @@ class _SignInPageState extends State<SignInPage> {
   }
 
   Future<void> _signIn() async {
+    final authService = Provider.of<AuthService>(context, listen: false); // Access AuthService via Provider
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
@@ -37,10 +39,36 @@ class _SignInPageState extends State<SignInPage> {
     });
 
     try {
-      await _authService.signIn(email: email, password: password);
-      if (mounted) Navigator.pushReplacementNamed(context, '/home');
+      await authService.signIn(email: email, password: password);
+      // Removed: if (mounted) Navigator.pushReplacementNamed(context, '/home');
+      // AuthWrapper in main.dart will handle navigation based on auth state change.
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = _friendlyError(e.code));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // New method for Google Sign-In
+  Future<void> _signInWithGoogle() async {
+    final authService = Provider.of<AuthService>(context, listen: false); // Access AuthService via Provider
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final userCredential = await authService.signInWithGoogle();
+      if (userCredential == null) {
+        // User cancelled the sign-in flow
+        setState(() => _errorMessage = 'Google Sign-In cancelled.');
+      }
+      // No explicit navigation here either; AuthWrapper handles it.
+    } on FirebaseAuthException catch (e) {
+      setState(() => _errorMessage = _friendlyError(e.code));
+    } catch (e) {
+      // General error, e.g., from google_sign_in plugin itself
+      setState(() => _errorMessage = 'An unexpected error occurred during Google Sign-In.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -61,6 +89,8 @@ class _SignInPageState extends State<SignInPage> {
       case 'invalid-credential':
         return 'Invalid email or password.';
       default:
+      // You can add more specific error codes here if needed,
+      // especially for Google Sign-In specific FirebaseAuthException codes.
         return 'Sign in failed. Please try again.';
     }
   }
@@ -180,6 +210,31 @@ class _SignInPageState extends State<SignInPage> {
                       ),
                     ),
                   ),
+                  SizedBox(height: 12),
+
+                  // New Google Sign-In Button
+                  ElevatedButton.icon(
+                    onPressed: _isLoading ? null : _signInWithGoogle,
+                    icon: Image.asset(
+                      'assets/google_logo.png', // You'll need to add this asset
+                      height: 24.0,
+                    ),
+                    label: const Text(
+                      'Sign In with Google',
+                      style: TextStyle(fontSize: 18, color: Colors.black),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      padding: EdgeInsets.all(15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      disabledBackgroundColor: Colors.grey[200],
+                    ),
+                  ),
+
                   SizedBox(height: 12),
                   Center(
                     child: GestureDetector(

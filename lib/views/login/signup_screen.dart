@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // Import provider
 import '../../services/auth.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -13,7 +14,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _authService = AuthService();
+  // Removed: final _authService = AuthService(); // Will be accessed via Provider
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
   bool _isLoading = false;
@@ -28,6 +29,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Future<void> _signUp() async {
+    final authService = Provider.of<AuthService>(context, listen: false); // Access AuthService via Provider
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirm = _confirmPasswordController.text;
@@ -51,10 +53,40 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      await _authService.signUp(email: email, password: password);
-      if (mounted) Navigator.pushReplacementNamed(context, '/home');
+      await authService.signUp(email: email, password: password);
+      // Removed: if (mounted) Navigator.pushReplacementNamed(context, '/home');
+      // AuthWrapper in main.dart will handle navigation based on auth state change.
+      // After successful email/password signup, you might want to automatically
+      // navigate back to the login page, or directly to home if Firebase logs them in immediately.
+      // For now, I'll pop to the previous screen (likely Login).
+      if (mounted) Navigator.pop(context); // Go back to login after successful signup
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = _friendlyError(e.code));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // New method for Google Sign-Up/Sign-In
+  Future<void> _signUpWithGoogle() async {
+    final authService = Provider.of<AuthService>(context, listen: false); // Access AuthService via Provider
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final userCredential = await authService.signInWithGoogle();
+      if (userCredential == null) {
+        // User cancelled the sign-in flow
+        setState(() => _errorMessage = 'Google Sign-Up/In cancelled.');
+      }
+      // No explicit navigation here either; AuthWrapper handles it.
+    } on FirebaseAuthException catch (e) {
+      setState(() => _errorMessage = _friendlyError(e.code));
+    } catch (e) {
+      // General error, e.g., from google_sign_in plugin itself
+      setState(() => _errorMessage = 'An unexpected error occurred during Google Sign-Up/In.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -70,8 +102,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
         return 'Password is too weak. Use at least 6 characters.';
       case 'operation-not-allowed':
         return 'Email/password sign-up is not enabled.';
+      case 'account-exists-with-different-credential':
+        return 'An account already exists with the same email address but different sign-in credentials. Please sign in with the associated method.';
+      case 'cancelled-by-user': // Specific to Google Sign-In often
+        return 'Sign-in cancelled by user.';
       default:
-        return 'Sign up failed. Please try again.';
+      // You can add more specific error codes here if needed,
+      // especially for Google Sign-In specific FirebaseAuthException codes.
+        return 'Sign up failed. Please try again. Code: $code';
     }
   }
 
@@ -204,6 +242,32 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         ),
                       ),
                     ),
+
+                    SizedBox(height: 10), // Added spacing for new button
+
+                    // New Google Sign-Up Button
+                    ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _signUpWithGoogle,
+                      icon: Image.asset(
+                        'assets/google_logo.png', // Ensure this asset is available
+                        height: 24.0,
+                      ),
+                      label: const Text(
+                        'Sign Up with Google',
+                        style: TextStyle(fontSize: 18, color: Colors.black),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        padding: EdgeInsets.all(15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        disabledBackgroundColor: Colors.grey[200],
+                      ),
+                    ),
+
                     SizedBox(height: 28),
                     Center(
                       child: GestureDetector(
