@@ -119,6 +119,7 @@ class AuthService {
     }
   }
 
+  //TODO: ADD REQUIRED -> NAME and USERNAME
   // Register with email and password
   Future<UserCredential> signUp({
     required String email,

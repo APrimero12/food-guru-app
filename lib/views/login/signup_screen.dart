@@ -32,6 +32,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
+  /**
+   * This function handles the signup for a new user
+   */
   Future<void> _signUp() async {
     final authService = Provider.of<AuthService>(context, listen: false); // Access AuthService via Provider
 
@@ -268,6 +271,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           'Create Account',
                           style:
                           TextStyle(fontSize: 18, color: Colors.white),
+
                         ),
                       ),
                     ),
