@@ -1,7 +1,9 @@
+import 'package:appdevproject/models/user_model.dart';
 import 'package:appdevproject/views/cart/cart_page.dart';
 import 'package:appdevproject/views/friends/friends_page.dart';
 import 'package:appdevproject/views/profile/myprofile_page.dart';
 import 'package:appdevproject/views/recipe/add_recipe.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'explore/explore_content.dart';
@@ -25,14 +27,28 @@ class _MyExplorePageState extends State<MyExplorePage> {
   int _bottomNavIndex = 0; // Tracks the selected item in the BottomNavigationBar
   AppView _currentAppView = AppView.homeTabs; // Tracks the currently displayed main view
 
-  //This list now represents ONLY the pages accessible via the BottomNavigationBar
-  final List<Widget> _bottomNavPages = const [
-    ExploreContent(),
-    FriendsPage(),
-    AddRecipe(),
-    CartPage(),
-    ProfilePage(),
-  ];
+  late final List<Widget> _bottomNavPages;
+
+  @override
+  void initState() {
+    super.initState();
+    final UserModel currentUserForProfile = UserModel(
+      uid: 'temp_user_id',
+      name: 'User Name',
+      username: '@username',
+      bio: '',
+      avatar: '',
+    );
+
+    //This list has pages accessible by the BottomNavigationBar
+    _bottomNavPages = [
+      ExploreContent(),
+      FriendsPage(),
+      AddRecipe(),
+      CartPage(),
+      ProfilePage(user: currentUserForProfile),
+    ];
+  }
 
   // --- Dynamically build the AppBar ---
   // This method creates the AppBar content based on the current view (homeTabs or DmsPage)
