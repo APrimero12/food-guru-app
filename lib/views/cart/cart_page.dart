@@ -17,7 +17,7 @@ class _CartPageState extends State<CartPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Friend PAGE GOOD')
+              Text('cart PAGE GOOD')
             ],
           ),
         ),

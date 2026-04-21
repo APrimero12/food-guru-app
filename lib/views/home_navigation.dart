@@ -1,4 +1,6 @@
+// lib/views/home_navigation.dart
 import 'package:appdevproject/models/user_model.dart';
+import 'package:appdevproject/providers/user_provider.dart';
 import 'package:appdevproject/services/auth.dart';
 import 'package:appdevproject/services/user_services.dart';
 import 'package:appdevproject/views/cart/cart_page.dart';
@@ -29,77 +31,69 @@ class _MyExplorePageState extends State<MyExplorePage> {
   int _bottomNavIndex = 0;
   AppView _currentAppView = AppView.homeTabs;
 
-  // A real app would load this from Firestore via a stream/provider.
-  // For now we use a placeholder that mirrors what initState previously had.
-  late UserModel _currentUser;
+  void _openSettings() =>
+      setState(() => _currentAppView = AppView.settingsPage);
 
-  @override
-  void initState() {
-    super.initState();
-    _currentUser = UserModel(
-      uid: 'temp_user_id',
-      name: 'User Name',
-      username: '@username',
-      bio: '',
-      avatar: '',
-    );
-  }
-
-  // Called by ProfilePage when the user taps "Settings"
-  void _openSettings() {
-    setState(() {
-      _currentAppView = AppView.settingsPage;
-    });
-  }
+  // ----------------------------------------------------------------- AppBar --
 
   AppBar _buildAppBar(BuildContext context) {
     String titleText;
     List<Widget> appBarActions = [];
     Widget? leadingWidget;
 
-    if (_currentAppView == AppView.dmsPage) {
-      titleText = 'Direct Messages';
-      leadingWidget = IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.black),
-        onPressed: () => setState(() => _currentAppView = AppView.homeTabs),
-      );
-    } else if (_currentAppView == AppView.settingsPage) {
-      titleText = 'Settings';
-      leadingWidget = IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.black),
-        onPressed: () => setState(() => _currentAppView = AppView.homeTabs),
-      );
-    } else {
-      titleText = 'FoodGuru';
-      appBarActions = [
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.notifications_none, color: Colors.black),
-              onPressed: () =>
-                  setState(() => _currentAppView = AppView.dmsPage),
-            ),
-            Positioned(
-              right: 8,
-              top: 8,
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                child: const Text(
-                  '2',
-                  style: TextStyle(color: Colors.white, fontSize: 10),
-                  textAlign: TextAlign.center,
+    switch (_currentAppView) {
+      case AppView.dmsPage:
+        titleText = 'Direct Messages';
+        leadingWidget = IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () =>
+              setState(() => _currentAppView = AppView.homeTabs),
+        );
+        break;
+
+      case AppView.settingsPage:
+        titleText = 'Settings';
+        leadingWidget = IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () =>
+              setState(() => _currentAppView = AppView.homeTabs),
+        );
+        break;
+
+      case AppView.homeTabs:
+        titleText = 'FoodGuru';
+        appBarActions = [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_none,
+                    color: Colors.black),
+                onPressed: () =>
+                    setState(() => _currentAppView = AppView.dmsPage),
+              ),
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.red,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  constraints:
+                  const BoxConstraints(minWidth: 16, minHeight: 16),
+                  child: const Text(
+                    '2',
+                    style: TextStyle(color: Colors.white, fontSize: 10),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ];
+            ],
+          ),
+        ];
+        break;
     }
 
     return AppBar(
@@ -110,13 +104,12 @@ class _MyExplorePageState extends State<MyExplorePage> {
         children: [
           if (_currentAppView == AppView.homeTabs)
             const Icon(Icons.restaurant_menu, color: Colors.orange),
-          if (_currentAppView == AppView.homeTabs) const SizedBox(width: 8),
+          if (_currentAppView == AppView.homeTabs)
+            const SizedBox(width: 8),
           Text(
             titleText,
             style: const TextStyle(
-              color: Colors.black,
-              fontWeight: FontWeight.bold,
-            ),
+                color: Colors.black, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -124,7 +117,9 @@ class _MyExplorePageState extends State<MyExplorePage> {
     );
   }
 
-  Widget _buildBodyContent() {
+  // ------------------------------------------------------------------ Body --
+
+  Widget _buildBodyContent(UserModel? user) {
     final authService = Provider.of<AuthService>(context, listen: false);
     final userService = UserService();
 
@@ -133,73 +128,77 @@ class _MyExplorePageState extends State<MyExplorePage> {
         return const DmsPage();
 
       case AppView.settingsPage:
+        if (user == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
         return SettingsPage(
-          currentUser: _currentUser,
+          currentUser: user,
           authService: authService,
           userService: userService,
         );
 
       case AppView.homeTabs:
-      // Build the tab pages inline so ProfilePage can receive the callback.
         final List<Widget> pages = [
-          ExploreContent(),
-          FriendsPage(),
-          AddRecipe(),
-          CartPage(),
-          ProfilePage(
-            user: _currentUser,
-            onSettingsTapped: _openSettings,
-          ),
+          const ExploreContent(),
+          const FriendsPage(),
+          const AddRecipe(),
+          const CartPage(),
+          if (user == null)
+            const Center(child: CircularProgressIndicator())
+          else
+            ProfilePage(
+              user: user,
+              onSettingsTapped: _openSettings,
+            ),
         ];
-        return pages[_bottomNavIndex];
+        final safeIndex = _bottomNavIndex.clamp(0, pages.length - 1);
+        return pages[safeIndex];
     }
   }
 
+  // ----------------------------------------------------------------- build --
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: _buildAppBar(context),
-      body: _buildBodyContent(),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _bottomNavIndex,
-        onTap: (index) {
-          setState(() {
-            _bottomNavIndex = index;
-            _currentAppView = AppView.homeTabs;
-          });
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.orange,
-        unselectedItemColor: Colors.grey,
-        showSelectedLabels: true,
-        showUnselectedLabels: true,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: 'Explore',
+    return Consumer<UserProvider>(
+      builder: (context, userProvider, _) {
+        return Scaffold(
+          appBar: _buildAppBar(context),
+          body: _buildBodyContent(userProvider.currentUser),
+          bottomNavigationBar: BottomNavigationBar(
+            currentIndex: _bottomNavIndex,
+            onTap: (index) {
+              setState(() {
+                _bottomNavIndex = index;
+                _currentAppView = AppView.homeTabs;
+              });
+            },
+            type: BottomNavigationBarType.fixed,
+            selectedItemColor: Colors.orange,
+            unselectedItemColor: Colors.grey,
+            showSelectedLabels: true,
+            showUnselectedLabels: true,
+            items: const [
+              BottomNavigationBarItem(
+                  icon: Icon(Icons.search), label: 'Explore'),
+              BottomNavigationBarItem(
+                  icon: Icon(Icons.people_outline), label: 'Friends'),
+              BottomNavigationBarItem(
+                icon: CircleAvatar(
+                  radius: 12,
+                  backgroundColor: Colors.orange,
+                  child: Icon(Icons.add, color: Colors.white, size: 20),
+                ),
+                label: 'Add',
+              ),
+              BottomNavigationBarItem(
+                  icon: Icon(Icons.shopping_cart_outlined), label: 'Cart'),
+              BottomNavigationBarItem(
+                  icon: Icon(Icons.person_outline), label: 'Profile'),
+            ],
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline),
-            label: 'Friends',
-          ),
-          BottomNavigationBarItem(
-            icon: CircleAvatar(
-              radius: 12,
-              backgroundColor: Colors.orange,
-              child: Icon(Icons.add, color: Colors.white, size: 20),
-            ),
-            label: 'Add',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart_outlined),
-            label: 'Cart',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            label: 'Profile',
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
