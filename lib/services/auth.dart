@@ -32,36 +32,71 @@ class AuthService {
       }
     }
   }
-
   // --- Helper method to save user data to Firestore ---
-  Future<void> _saveUserToFirestore(User user) async {
-    // We'll use the user's UID as the document ID in the 'users' collection
+  // This method now intelligently creates or updates.
+  // 'initialName' and 'initialUsername' are only used on FIRST creation.
+  Future<void> _saveUserToFirestore(
+      User user, {
+        String? initialName,
+        String? initialUsername,
+      }) async {
     DocumentReference userRef = _firestore.collection('users').doc(user.uid);
-
-    // Get the current user data from Firestore if it exists
     DocumentSnapshot doc = await userRef.get();
 
     if (!doc.exists) {
-      // If the document doesn't exist, this is a new user or their first login
-      // Create a UserModel from the Firebase User and save it
-      final userModel = UserModel.fromFirebaseUser(user);
+      // ONLY ON FIRST LOGIN/SIGNUP
+      // If the document doesn't exist, this is a new user. Create the initial profile.
+      final userModel = UserModel(
+        uid: user.uid,
+        email: user.email,
+        // Use provided name/displayName for initial setup
+        name: initialName ?? user.displayName,
+        // Use provided username for initial setup
+        username: initialUsername,
+        avatar: user.photoURL,
+        bio: null, // Bio is typically empty on first creation
+        createdAt: Timestamp.now(),
+        lastActive: Timestamp.now(),
+      );
       await userRef.set(userModel.toMap());
       print('New user added to Firestore: ${user.uid}');
+      // END ONLY ON FIRST LOGIN/SIGNUP
     } else {
-      // If the document exists, you might want to update some fields,
-      // or simply ensure the data is consistent.
-      // For example, update displayName or photoURL if they changed.
-      // We also update lastActive field here.
+      // ONLY ON SUBSEQUENT LOGINS
+      // If the document exists, only update system-managed fields
+      // and a 'lastActive' timestamp. Do NOT overwrite user-customized
+      // 'name' or 'username' here.
       final existingData = doc.data() as Map<String, dynamic>;
-      final updatedData = {
-        'email': user.email ?? existingData['email'], // Keep existing if null from auth
-        'name': user.displayName ?? existingData['name'], // Update name from Firebase if available
-        'avatar': user.photoURL ?? existingData['avatar'], // Update avatar from Firebase if available
-        'lastActive': FieldValue.serverTimestamp(), // Update last active timestamp
+      final Map<String, dynamic> updatedData = {
+        'email': user.email ?? existingData['email'], // Update email if it changed in Auth
+        'lastActive': FieldValue.serverTimestamp(), // Always update last active timestamp
       };
+
+      // Only update 'name' if the existing 'name' in Firestore is null/empty AND
+      // a displayName is available from Firebase Auth. This handles cases where
+      // name wasn't set initially or was from Google Auth.
+      // After first login, users typically set their name in-app.
+      if ((existingData['name'] == null || (existingData['name'] as String).isEmpty) && user.displayName != null) {
+        updatedData['name'] = user.displayName;
+      }
+
       await userRef.update(updatedData);
       print('Existing user data updated in Firestore: ${user.uid}');
+      // END ONLY ON SUBSEQUENT LOGINS
     }
+  }
+
+  Future<UserCredential?> linkWithCredential(AuthCredential credential) async {
+    if (_auth.currentUser == null) {
+      // This should ideally not be reached if called correctly in the linking flow
+      throw FirebaseAuthException(code: 'no-current-user', message: 'No user signed in to link credential to.');
+    }
+    final userCredential = await _auth.currentUser!.linkWithCredential(credential);
+    // After linking, ensure Firestore profile is up-to-date
+    if (userCredential.user != null) {
+      await _saveUserToFirestore(userCredential.user!); // Update Firestore after linking
+    }
+    return userCredential;
   }
 
   // Sign in with email and password
@@ -74,6 +109,7 @@ class AuthService {
       password: password,
     );
     if (userCredential.user != null) {
+      // No initialName/Username needed here, as it's a login, not a creation with custom name/username
       await _saveUserToFirestore(userCredential.user!);
     }
     return userCredential;
@@ -91,7 +127,6 @@ class AuthService {
       if (googleUser == null) {
         return null;
       }
-
       // 2. Obtain the authentication details from the GoogleSignInAccount
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
@@ -103,12 +138,18 @@ class AuthService {
 
       // 4. Sign in to Firebase with the Google credential
       // This completes the authentication process with Firebase.
-      final UserCredential userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      linkWithCredential(credential);
+      final userCredential = await _auth.signInWithCredential(credential);
 
       if (userCredential.user != null) {
-        await _saveUserToFirestore(userCredential.user!);
+        // Pass user.displayName and user.photoURL as initial values for new Google sign-ins
+        await _saveUserToFirestore(
+          userCredential.user!,
+          initialName: userCredential.user!.displayName,
+          // avatar: userCredential.user!.photoURL, // initial avatar is set during creation
+          initialUsername: "guest", // Google does not provide a 'username' typically
+        );
       }
-
       return userCredential;
     } on FirebaseAuthException catch (e) {
       print("Firebase Authentication Error: ${e.message}");
@@ -119,18 +160,30 @@ class AuthService {
     }
   }
 
-  //TODO: ADD REQUIRED -> NAME and USERNAME
   // Register with email and password
+  // MODIFIED: Added required name and username parameters
   Future<UserCredential> signUp({
     required String email,
     required String password,
+    required String name,     // New required parameter
+    required String username, // New required parameter
   }) async {
     final userCredential = await _auth.createUserWithEmailAndPassword(
       email: email.trim(),
       password: password,
     );
     if (userCredential.user != null) {
-      await _saveUserToFirestore(userCredential.user!); // Save/Update to Firestore
+      final user = userCredential.user!;
+      // Update the display name in Firebase Authentication profile
+      // This displayName will then be picked up by user.displayName later
+      await user.updateDisplayName(name);
+
+      // Save/Update to Firestore, passing the initial name and username
+      await _saveUserToFirestore(
+          user,
+          initialName: name,
+          initialUsername: username
+      );
     }
     return userCredential;
   }

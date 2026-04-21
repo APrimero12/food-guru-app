@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart'; // Import provider
 import '../../services/auth.dart';
 
@@ -40,8 +41,6 @@ class _SignInPageState extends State<SignInPage> {
 
     try {
       await authService.signIn(email: email, password: password);
-      // Removed: if (mounted) Navigator.pushReplacementNamed(context, '/home');
-      // AuthWrapper in main.dart will handle navigation based on auth state change.
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = _friendlyError(e.code));
     } finally {
@@ -49,28 +48,38 @@ class _SignInPageState extends State<SignInPage> {
     }
   }
 
-  // New method for Google Sign-In
+  // --- Your provided and now slightly modified _signInWithGoogle method ---
   Future<void> _signInWithGoogle() async {
-    final authService = Provider.of<AuthService>(context, listen: false); // Access AuthService via Provider
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final userCredential = await authService.signInWithGoogle();
-      if (userCredential == null) {
-        // User cancelled the sign-in flow
-        setState(() => _errorMessage = 'Google Sign-In cancelled.');
-      }
-      // No explicit navigation here either; AuthWrapper handles it.
+      final authService = Provider.of<AuthService>(context, listen: false);
+
+      await authService.signInWithGoogle();
     } on FirebaseAuthException catch (e) {
-      setState(() => _errorMessage = _friendlyError(e.code));
+      if (e.code == 'account-exists-with-different-credential') {
+        if (mounted) {
+          setState(() => _errorMessage = e.message); // Display the message from AuthService
+        }
+      }
+      else {
+        // Handle any other FirebaseAuthExceptions (like network issues, etc.)
+        if (mounted) {
+          setState(() => _errorMessage = _friendlyError(e.code));
+        }
+      }
     } catch (e) {
-      // General error, e.g., from google_sign_in plugin itself
-      setState(() => _errorMessage = 'An unexpected error occurred during Google Sign-In.');
+      print('SignInPage DEBUG: General Exception caught in UI: $e');
+      if (mounted) {
+        setState(() => _errorMessage = 'An unexpected error occurred during Google Sign-In: $e');
+      }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -93,6 +102,12 @@ class _SignInPageState extends State<SignInPage> {
       // especially for Google Sign-In specific FirebaseAuthException codes.
         return 'Sign in failed. Please try again.';
     }
+  }
+
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.green),
+    );
   }
 
   @override
