@@ -86,17 +86,9 @@ class AuthService {
     }
   }
 
-  Future<UserCredential?> linkWithCredential(AuthCredential credential) async {
-    if (_auth.currentUser == null) {
-      // This should ideally not be reached if called correctly in the linking flow
-      throw FirebaseAuthException(code: 'no-current-user', message: 'No user signed in to link credential to.');
-    }
-    final userCredential = await _auth.currentUser!.linkWithCredential(credential);
-    // After linking, ensure Firestore profile is up-to-date
-    if (userCredential.user != null) {
-      await _saveUserToFirestore(userCredential.user!); // Update Firestore after linking
-    }
-    return userCredential;
+  Future<List<String>> fetchSignInMethodsForEmail(String email) async {
+    print('AuthService DEBUG: Fetching sign-in methods for email: $email');
+    return await _auth.fetchSignInMethodsForEmail(email);
   }
 
   // Sign in with email and password
@@ -127,6 +119,21 @@ class AuthService {
       if (googleUser == null) {
         return null;
       }
+
+      final List<String> existingSignInMethods = await fetchSignInMethodsForEmail(googleUser.email);
+      final List<String> otherProviders = existingSignInMethods.where((method) => method != 'google.com').toList();
+
+      if (otherProviders.isNotEmpty) {
+        // If an account with this email exists via a non-Google provider,
+        // we explicitly fail the Google Sign-In at this stage.
+        print('AuthService DEBUG: Conflict detected by client-side pre-check. Other providers: $otherProviders');
+        throw FirebaseAuthException(
+          code: 'email-already-in-use-by-other-provider', // Custom code for UI to catch
+          message: 'An account with ${googleUser.email} already exists using another sign-in method '
+              '(${otherProviders.join(', ')}). Please use your existing method to sign in.',
+        );
+      }
+
       // 2. Obtain the authentication details from the GoogleSignInAccount
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
@@ -138,7 +145,6 @@ class AuthService {
 
       // 4. Sign in to Firebase with the Google credential
       // This completes the authentication process with Firebase.
-      linkWithCredential(credential);
       final userCredential = await _auth.signInWithCredential(credential);
 
       if (userCredential.user != null) {
@@ -146,7 +152,6 @@ class AuthService {
         await _saveUserToFirestore(
           userCredential.user!,
           initialName: userCredential.user!.displayName,
-          // avatar: userCredential.user!.photoURL, // initial avatar is set during creation
           initialUsername: "guest", // Google does not provide a 'username' typically
         );
       }

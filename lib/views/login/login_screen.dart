@@ -48,7 +48,7 @@ class _SignInPageState extends State<SignInPage> {
     }
   }
 
-  // --- Your provided and now slightly modified _signInWithGoogle method ---
+  // VVVV MODIFIED: _signInWithGoogle method for guaranteed pre-check failure VVVV
   Future<void> _signInWithGoogle() async {
     setState(() {
       _isLoading = true;
@@ -58,16 +58,61 @@ class _SignInPageState extends State<SignInPage> {
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
 
-      await authService.signInWithGoogle();
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'account-exists-with-different-credential') {
+      // 1. Trigger the Google authentication flow to get the user's email
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        // User cancelled the Google sign-in prompt itself.
+        print('SignInPage Debug: User cancelled Google sign-in.');
         if (mounted) {
-          setState(() => _errorMessage = e.message); // Display the message from AuthService
+          setState(() => _errorMessage = 'Google Sign-In cancelled.');
         }
+        return; // Exit here as user cancelled
       }
-      else {
-        // Handle any other FirebaseAuthExceptions (like network issues, etc.)
+
+      // VVVV Perform explicit pre-check for existing non-Google accounts VVVV
+      print('SignInPage Debug: Performing pre-check for email: ${googleUser.email}');
+      final List<String> existingSignInMethods = await authService.fetchSignInMethodsForEmail(googleUser.email);
+
+      // Filter out 'google.com' if it's already there (meaning user previously signed up with Google)
+      // or if their account was already linked somehow (though we're avoiding linking now).
+      final otherProviders = existingSignInMethods.where((method) => method != 'google.com').toList();
+
+      if (otherProviders.isNotEmpty) {
+        // VVVV GUARANTEED FAILURE PATH VVVV
+        print('SignInPage Debug: Conflict detected by pre-check. Other providers: $otherProviders');
         if (mounted) {
+          setState(() => _errorMessage = 'An account with ${googleUser.email} already exists using the  '
+              '${otherProviders.join(', ')} method. Please sign in with your existing method '
+              'or use a different email for Google Sign-In.');
+        }
+        // No further Firebase authentication attempt is made!
+        return; // <--- CRUCIAL: Exit here if conflict found
+        // ^^^^ END GUARANTEED FAILURE PATH ^^^^
+      }
+      // ^^^^ END NEW PRE-CHECK ^^^^
+
+
+      // 2. If pre-check passes, proceed with Firebase authentication
+      // The authService.signInWithGoogle method will now handle the rest
+      // (getting credential, calling FirebaseAuth.instance.signInWithCredential, saving to Firestore).
+      print('SignInPage Debug: Pre-check passed. Calling AuthService.signInWithGoogle...');
+      await authService.signInWithGoogle();
+
+      // If we reach here, Google Sign-In with Firebase was successful.
+      if (mounted) {
+        _showSuccess('Signed in with Google!');
+      }
+
+    } on FirebaseAuthException catch (e) {
+      print('SignInPage DEBUG: FirebaseAuthException caught in UI: code=${e.code}, message=${e.message}');
+      // This catch block will now mostly handle general FirebaseAuth errors,
+      // as the 'account-exists-with-different-credential' should be caught by our pre-check.
+      // However, it's good to keep it for robustness.
+      if (mounted) {
+        // Catch our custom error code specifically if it was rethrown (though our pre-check prevents this now)
+        if (e.code == 'email-already-in-use-by-other-provider') {
+          setState(() => _errorMessage = e.message); // Use the message from AuthService
+        } else {
           setState(() => _errorMessage = _friendlyError(e.code));
         }
       }
@@ -97,10 +142,12 @@ class _SignInPageState extends State<SignInPage> {
         return 'Too many attempts. Please try again later.';
       case 'invalid-credential':
         return 'Invalid email or password.';
+      case 'operation-not-allowed':
+        return 'Email/password sign-in is not enabled.';
+      case 'email-already-in-use-by-other-provider': // NEW: Handle our custom error code
+        return 'An account with this email already exists with a different provider.';
       default:
-      // You can add more specific error codes here if needed,
-      // especially for Google Sign-In specific FirebaseAuthException codes.
-        return 'Sign in failed. Please try again.';
+        return 'Sign in failed. Please try again. Code: $code';
     }
   }
 
