@@ -119,7 +119,7 @@ class _SignInPageState extends State<SignInPage> {
                       radius: 30,
                       backgroundColor: Colors.deepOrangeAccent,
                       child: Icon(
-                        Icons.soup_kitchen,
+                        Icons.restaurant_menu,
                         color: Colors.white,
                         size: 30,
                       ),
