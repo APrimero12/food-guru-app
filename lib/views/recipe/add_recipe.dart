@@ -57,47 +57,13 @@ class _AddRecipeState extends State<AddRecipe> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        title: Row(
-          children: [
-            const Icon(Icons.restaurant_menu, color: Colors.orange),
-            const SizedBox(width: 8),
-            const Text(
-              'FoodGuru',
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-            ),
-            const Spacer(),
-            IconButton(onPressed: () {}, icon: const Icon(Icons.search, color: Colors.black)),
-            IconButton(onPressed: () {}, icon: const Icon(Icons.shopping_cart_outlined, color: Colors.black)),
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(color: const Color(0xFF1A1C1E), borderRadius: BorderRadius.circular(8)),
-              child: const Icon(Icons.add, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 8),
-            const CircleAvatar(
-              radius: 16,
-              backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=user'),
-            ),
-          ],
-        ),
-      ),
+      backgroundColor: Colors.white,
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextButton.icon(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back, color: Colors.black, size: 20),
-              label: const Text('Back', style: TextStyle(color: Colors.black, fontSize: 16)),
-              style: TextButton.styleFrom(padding: EdgeInsets.zero),
-            ),
             const SizedBox(height: 16),
             Container(
               decoration: BoxDecoration(
@@ -260,6 +226,10 @@ class _AddRecipeState extends State<AddRecipe> {
                   _buildLabel('Instructions *'),
                   _buildTextField(TextEditingController(), 'Step 1...', maxLines: 4),
                   const SizedBox(height: 32),
+                  /// TODO: change the sized box into an elevated button
+                  /// add functionality where it saves the data into the firebase
+                  /// instead into an array of recipes
+
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
