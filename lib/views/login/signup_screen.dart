@@ -64,7 +64,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      await authService.signUp(email: email, password: password);
+      await authService.signUp(email: email, password: password, name: fullName, username: username);
       // Removed: if (mounted) Navigator.pushReplacementNamed(context, '/home');
       // AuthWrapper in main.dart will handle navigation based on auth state change.
       // After successful email/password signup, you might want to automatically

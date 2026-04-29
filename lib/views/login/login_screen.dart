@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart'; // Import provider
 import '../../services/auth.dart';
 
@@ -40,8 +41,6 @@ class _SignInPageState extends State<SignInPage> {
 
     try {
       await authService.signIn(email: email, password: password);
-      // Removed: if (mounted) Navigator.pushReplacementNamed(context, '/home');
-      // AuthWrapper in main.dart will handle navigation based on auth state change.
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = _friendlyError(e.code));
     } finally {
@@ -49,28 +48,83 @@ class _SignInPageState extends State<SignInPage> {
     }
   }
 
-  // New method for Google Sign-In
+  // VVVV MODIFIED: _signInWithGoogle method for guaranteed pre-check failure VVVV
   Future<void> _signInWithGoogle() async {
-    final authService = Provider.of<AuthService>(context, listen: false); // Access AuthService via Provider
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final userCredential = await authService.signInWithGoogle();
-      if (userCredential == null) {
-        // User cancelled the sign-in flow
-        setState(() => _errorMessage = 'Google Sign-In cancelled.');
+      final authService = Provider.of<AuthService>(context, listen: false);
+
+      // 1. Trigger the Google authentication flow to get the user's email
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        // User cancelled the Google sign-in prompt itself.
+        print('SignInPage Debug: User cancelled Google sign-in.');
+        if (mounted) {
+          setState(() => _errorMessage = 'Google Sign-In cancelled.');
+        }
+        return; // Exit here as user cancelled
       }
-      // No explicit navigation here either; AuthWrapper handles it.
+
+      // VVVV Perform explicit pre-check for existing non-Google accounts VVVV
+      print('SignInPage Debug: Performing pre-check for email: ${googleUser.email}');
+      final List<String> existingSignInMethods = await authService.fetchSignInMethodsForEmail(googleUser.email);
+
+      // Filter out 'google.com' if it's already there (meaning user previously signed up with Google)
+      // or if their account was already linked somehow (though we're avoiding linking now).
+      final otherProviders = existingSignInMethods.where((method) => method != 'google.com').toList();
+
+      if (otherProviders.isNotEmpty) {
+        // VVVV GUARANTEED FAILURE PATH VVVV
+        print('SignInPage Debug: Conflict detected by pre-check. Other providers: $otherProviders');
+        if (mounted) {
+          setState(() => _errorMessage = 'An account with ${googleUser.email} already exists using the  '
+              '${otherProviders.join(', ')} method. Please sign in with your existing method '
+              'or use a different email for Google Sign-In.');
+        }
+        // No further Firebase authentication attempt is made!
+        return; // <--- CRUCIAL: Exit here if conflict found
+        // ^^^^ END GUARANTEED FAILURE PATH ^^^^
+      }
+      // ^^^^ END NEW PRE-CHECK ^^^^
+
+
+      // 2. If pre-check passes, proceed with Firebase authentication
+      // The authService.signInWithGoogle method will now handle the rest
+      // (getting credential, calling FirebaseAuth.instance.signInWithCredential, saving to Firestore).
+      print('SignInPage Debug: Pre-check passed. Calling AuthService.signInWithGoogle...');
+      await authService.signInWithGoogle();
+
+      // If we reach here, Google Sign-In with Firebase was successful.
+      if (mounted) {
+        _showSuccess('Signed in with Google!');
+      }
+
     } on FirebaseAuthException catch (e) {
-      setState(() => _errorMessage = _friendlyError(e.code));
+      print('SignInPage DEBUG: FirebaseAuthException caught in UI: code=${e.code}, message=${e.message}');
+      // This catch block will now mostly handle general FirebaseAuth errors,
+      // as the 'account-exists-with-different-credential' should be caught by our pre-check.
+      // However, it's good to keep it for robustness.
+      if (mounted) {
+        // Catch our custom error code specifically if it was rethrown (though our pre-check prevents this now)
+        if (e.code == 'email-already-in-use-by-other-provider') {
+          setState(() => _errorMessage = e.message); // Use the message from AuthService
+        } else {
+          setState(() => _errorMessage = _friendlyError(e.code));
+        }
+      }
     } catch (e) {
-      // General error, e.g., from google_sign_in plugin itself
-      setState(() => _errorMessage = 'An unexpected error occurred during Google Sign-In.');
+      print('SignInPage DEBUG: General Exception caught in UI: $e');
+      if (mounted) {
+        setState(() => _errorMessage = 'An unexpected error occurred during Google Sign-In: $e');
+      }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -88,11 +142,19 @@ class _SignInPageState extends State<SignInPage> {
         return 'Too many attempts. Please try again later.';
       case 'invalid-credential':
         return 'Invalid email or password.';
+      case 'operation-not-allowed':
+        return 'Email/password sign-in is not enabled.';
+      case 'email-already-in-use-by-other-provider': // NEW: Handle our custom error code
+        return 'An account with this email already exists with a different provider.';
       default:
-      // You can add more specific error codes here if needed,
-      // especially for Google Sign-In specific FirebaseAuthException codes.
-        return 'Sign in failed. Please try again.';
+        return 'Sign in failed. Please try again. Code: $code';
     }
+  }
+
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.green),
+    );
   }
 
   @override
