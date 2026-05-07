@@ -3,6 +3,7 @@ import 'package:appdevproject/providers/user_provider.dart';
 import 'package:appdevproject/views/home_navigation.dart';
 import 'package:appdevproject/views/login/login_screen.dart';
 import 'package:appdevproject/views/login/signup_screen.dart';
+import 'package:appdevproject/views/splash_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -88,8 +89,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
         // Still initialising or running the initial server check
         if (snapshot.connectionState == ConnectionState.waiting ||
             !_initialCheckPerformed) {
-          return const Scaffold(
-              body: Center(child: CircularProgressIndicator()));
+          return const SplashScreen();
         }
 
         if (snapshot.data == null) {
