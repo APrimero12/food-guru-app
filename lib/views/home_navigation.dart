@@ -31,10 +31,20 @@ class _MyExplorePageState extends State<MyExplorePage> {
   int _bottomNavIndex = 0;
   AppView _currentAppView = AppView.homeTabs;
 
+  // ── navigation helpers ───────────────────────────────────────────────────
+
   void _openSettings() =>
       setState(() => _currentAppView = AppView.settingsPage);
 
-  // ----------------------------------------------------------------- AppBar --
+  /// Switches the bottom-nav to the Friends tab (index 1).
+  void _openCommunity() {
+    setState(() {
+      _currentAppView = AppView.homeTabs;
+      _bottomNavIndex = 1;
+    });
+  }
+
+  // ── AppBar ───────────────────────────────────────────────────────────────
 
   AppBar _buildAppBar(BuildContext context) {
     String titleText;
@@ -104,8 +114,7 @@ class _MyExplorePageState extends State<MyExplorePage> {
         children: [
           if (_currentAppView == AppView.homeTabs)
             const Icon(Icons.restaurant_menu, color: Colors.orange),
-          if (_currentAppView == AppView.homeTabs)
-            const SizedBox(width: 8),
+          if (_currentAppView == AppView.homeTabs) const SizedBox(width: 8),
           Text(
             titleText,
             style: const TextStyle(
@@ -117,7 +126,7 @@ class _MyExplorePageState extends State<MyExplorePage> {
     );
   }
 
-  // ------------------------------------------------------------------ Body --
+  // ── body ────────────────────────────────────────────────────────────────
 
   Widget _buildBodyContent(UserModel? user) {
     final authService = Provider.of<AuthService>(context, listen: false);
@@ -149,6 +158,7 @@ class _MyExplorePageState extends State<MyExplorePage> {
             ProfilePage(
               user: user,
               onSettingsTapped: _openSettings,
+              onCommunityTapped: _openCommunity, // ← wired up here
             ),
         ];
         final safeIndex = _bottomNavIndex.clamp(0, pages.length - 1);
@@ -156,7 +166,7 @@ class _MyExplorePageState extends State<MyExplorePage> {
     }
   }
 
-  // ----------------------------------------------------------------- build --
+  // ── build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {

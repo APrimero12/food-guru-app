@@ -1,4 +1,3 @@
-import 'package:appdevproject/views/profile/settings_page.dart';
 import 'package:flutter/material.dart';
 import 'package:appdevproject/models/user_model.dart';
 
@@ -6,14 +5,16 @@ class ProfilePage extends StatelessWidget {
   final UserModel user;
 
   /// Called when the user taps the Settings button.
-  /// The parent (MyExplorePage) handles the actual navigation so the
-  /// bottom navigation bar stays visible.
   final VoidCallback? onSettingsTapped;
+
+  /// Called when the user taps View Community — switches to the Friends tab.
+  final VoidCallback? onCommunityTapped;
 
   const ProfilePage({
     super.key,
     required this.user,
     this.onSettingsTapped,
+    this.onCommunityTapped,
   });
 
   Widget _buildStatItem(
@@ -41,10 +42,10 @@ class ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int userRecipesCount = 0;
-    final int likedRecipesCount = 0;
-    final int followingCount = 0;
-    final int followersCount = 0;
+    const int userRecipesCount = 0;
+    const int likedRecipesCount = 0;
+    const int followingCount = 0;
+    const int followersCount = 0;
 
     return SingleChildScrollView(
       child: Column(
@@ -53,7 +54,7 @@ class ProfilePage extends StatelessWidget {
           // Header gradient
           Container(
             height: 150,
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -64,20 +65,20 @@ class ProfilePage extends StatelessWidget {
 
           // Main content
           Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0),
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Profile card overlapping the gradient
                 Transform.translate(
-                  offset: Offset(0.0, -80.0),
+                  offset: const Offset(0.0, -80.0),
                   child: Card(
                     elevation: 6,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                     margin: EdgeInsets.zero,
                     child: Padding(
-                      padding: EdgeInsets.all(24.0),
+                      padding: const EdgeInsets.all(24.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
@@ -85,9 +86,9 @@ class ProfilePage extends StatelessWidget {
                           Container(
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border:
-                              Border.all(color: Colors.white, width: 4),
-                              boxShadow: [
+                              border: Border.all(
+                                  color: Colors.white, width: 4),
+                              boxShadow: const [
                                 BoxShadow(
                                   color: Colors.black26,
                                   blurRadius: 10,
@@ -98,8 +99,8 @@ class ProfilePage extends StatelessWidget {
                             child: CircleAvatar(
                               radius: 64,
                               backgroundColor: Colors.grey[300],
-                              backgroundImage: user.avatar != null &&
-                                  user.avatar!.isNotEmpty
+                              backgroundImage:
+                              user.avatar != null && user.avatar!.isNotEmpty
                                   ? NetworkImage(user.avatar!)
                                   : null,
                               child: (user.avatar == null ||
@@ -118,31 +119,36 @@ class ProfilePage extends StatelessWidget {
                                   : null,
                             ),
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
 
                           // Name & username
                           Text(
                             user.name ?? 'Guest User',
-                            style: TextStyle(
-                                fontSize: 24, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold),
                             textAlign: TextAlign.center,
                           ),
                           Text(
-                            user.username ?? '@unknown',
+                            user.username != null
+                                ? '@${user.username}'
+                                : '@unknown',
                             style: TextStyle(
                                 fontSize: 16, color: Colors.grey[600]),
                             textAlign: TextAlign.center,
                           ),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
 
                           // Bio
                           if (user.bio != null && user.bio!.isNotEmpty)
                             Padding(
-                              padding: const EdgeInsets.only(bottom: 16.0),
+                              padding:
+                              const EdgeInsets.only(bottom: 16.0),
                               child: Text(
                                 user.bio!,
                                 style: const TextStyle(
-                                    fontSize: 14, color: Colors.black87),
+                                    fontSize: 14,
+                                    color: Colors.black87),
                                 textAlign: TextAlign.center,
                               ),
                             ),
@@ -158,20 +164,18 @@ class ProfilePage extends StatelessWidget {
                               _buildStatItem(Icons.favorite, Colors.red,
                                   '$likedRecipesCount', 'Liked'),
                               GestureDetector(
-                                onTap: () =>
-                                    print('Navigate to Following'),
+                                onTap: onCommunityTapped,
                                 child: _buildStatItem(Icons.people,
                                     Colors.blue, '$followingCount', 'Following'),
                               ),
                               GestureDetector(
-                                onTap: () =>
-                                    print('Navigate to Followers'),
+                                onTap: onCommunityTapped,
                                 child: _buildStatItem(Icons.people,
                                     Colors.green, '$followersCount', 'Followers'),
                               ),
                             ],
                           ),
-                          SizedBox(height: 24),
+                          const SizedBox(height: 24),
 
                           // Action buttons
                           Wrap(
@@ -180,37 +184,39 @@ class ProfilePage extends StatelessWidget {
                             alignment: WrapAlignment.center,
                             children: [
                               ElevatedButton.icon(
-                                onPressed: () =>
-                                    print('View Community button pressed'),
+                                // Navigate to the Friends tab
+                                onPressed: onCommunityTapped,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor:
                                   Theme.of(context).primaryColor,
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 20, vertical: 12),
                                   shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8)),
+                                      borderRadius:
+                                      BorderRadius.circular(8)),
                                 ),
                                 icon: const Icon(Icons.people_alt,
                                     size: 20, color: Colors.white),
                                 label: const Text('View Community',
-                                    style: TextStyle(color: Colors.white)),
+                                    style:
+                                    TextStyle(color: Colors.white)),
                               ),
                               OutlinedButton.icon(
-                                // Use the callback; fall back to a no-op if null
-                                onPressed: onSettingsTapped ??
-                                        () => print('Settings button pressed'),
+                                onPressed: onSettingsTapped,
                                 style: OutlinedButton.styleFrom(
-                                  side:
-                                  BorderSide(color: Colors.grey[400]!),
+                                  side: BorderSide(
+                                      color: Colors.grey[400]!),
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 20, vertical: 12),
                                   shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8)),
+                                      borderRadius:
+                                      BorderRadius.circular(8)),
                                 ),
                                 icon: const Icon(Icons.settings,
                                     size: 20, color: Colors.black87),
                                 label: const Text('Settings',
-                                    style: TextStyle(color: Colors.black87)),
+                                    style: TextStyle(
+                                        color: Colors.black87)),
                               ),
                             ],
                           ),
@@ -219,7 +225,7 @@ class ProfilePage extends StatelessWidget {
                     ),
                   ),
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
               ],
             ),
           ),

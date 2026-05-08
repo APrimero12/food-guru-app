@@ -66,5 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+    <string>FoodGuru needs access to your photos to update your profile picture.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>FoodGuru needs camera access to take a profile photo.</string>
 </dict>
 </plist>

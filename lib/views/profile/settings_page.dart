@@ -1,5 +1,12 @@
+import 'dart:io';
+
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import 'package:appdevproject/models/user_model.dart';
+import 'package:appdevproject/providers/user_provider.dart';
 import 'package:appdevproject/services/auth.dart';
 import 'package:appdevproject/services/user_services.dart';
 import 'package:appdevproject/views/login/login_screen.dart';
@@ -35,6 +42,12 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _showPasswordChange = false;
   bool _isLoading = false;
 
+  /// Holds a freshly-picked image before it is uploaded.
+  File? _pendingAvatarFile;
+
+  /// Tracks upload progress (0.0 – 1.0); null when not uploading.
+  double? _uploadProgress;
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +73,8 @@ class _SettingsPageState extends State<SettingsPage> {
     super.dispose();
   }
 
+  // ── Snackbar ─────────────────────────────────────────────────────────────
+
   void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -69,47 +84,250 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _handleLogout() async {
-    setState(() => _isLoading = true);
+  // ── Avatar helpers ────────────────────────────────────────────────────────
+
+  void _showAvatarOptions(UserModel liveUser) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFFFF3E0),
+                  child: Icon(Icons.photo_library, color: Colors.orange),
+                ),
+                title: const Text('Choose from gallery'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFFE3F2FD),
+                  child: Icon(Icons.camera_alt, color: Colors.blue),
+                ),
+                title: const Text('Take a photo'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              if (liveUser.avatar != null && liveUser.avatar!.isNotEmpty)
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFFFEBEE),
+                    child: Icon(Icons.delete_outline, color: Colors.red),
+                  ),
+                  title: const Text('Remove photo',
+                      style: TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _removeAvatar(liveUser);
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: source,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 85,
+    );
+    if (picked == null) return;
+    setState(() => _pendingAvatarFile = File(picked.path));
+  }
+
+  Future<void> _uploadAvatar(UserModel liveUser) async {
+    if (_pendingAvatarFile == null) return;
+
+    setState(() {
+      _isLoading = true;
+      _uploadProgress = 0;
+    });
+
     try {
-      await widget.authService.signOut();
-      _showSnackBar('Logged out successfully');
+      final uid = liveUser.uid;
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('avatars')
+          .child('$uid.jpg');
+
+      final task = ref.putFile(
+        _pendingAvatarFile!,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+
+      task.snapshotEvents.listen((snap) {
+        if (mounted) {
+          setState(() {
+            _uploadProgress = snap.bytesTransferred /
+                (snap.totalBytes == 0 ? 1 : snap.totalBytes);
+          });
+        }
+      });
+
+      await task;
+      final downloadUrl = await ref.getDownloadURL();
+
+      await widget.userService.updateUser(uid, {'avatar': downloadUrl});
+
+      final updatedUser = UserModel(
+        uid: uid,
+        name: liveUser.name,
+        username: liveUser.username,
+        email: liveUser.email,
+        bio: liveUser.bio,
+        avatar: downloadUrl,
+        createdAt: liveUser.createdAt,
+        lastActive: liveUser.lastActive,
+      );
+
       if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => SignInPage()),
-              (Route<dynamic> route) => false,
-        );
+        Provider.of<UserProvider>(context, listen: false)
+            .updateLocalUser(updatedUser);
+        setState(() {
+          _pendingAvatarFile = null;
+          _uploadProgress = null;
+        });
+        _showSnackBar('Avatar updated!');
       }
     } catch (e) {
-      _showSnackBar('Failed to log out: $e', isError: true);
-      print('Failed to log out: $e');
+      _showSnackBar('Failed to upload avatar: $e', isError: true);
+      setState(() => _uploadProgress = null);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  Future<void> _removeAvatar(UserModel liveUser) async {
+    setState(() => _isLoading = true);
+    try {
+      if (liveUser.avatar != null &&
+          liveUser.avatar!.contains('firebasestorage')) {
+        try {
+          await FirebaseStorage.instance
+              .refFromURL(liveUser.avatar!)
+              .delete();
+        } catch (_) {}
+      }
+
+      await widget.userService.updateUser(liveUser.uid, {'avatar': ''});
+
+      final updatedUser = UserModel(
+        uid: liveUser.uid,
+        name: liveUser.name,
+        username: liveUser.username,
+        email: liveUser.email,
+        bio: liveUser.bio,
+        avatar: '',
+        createdAt: liveUser.createdAt,
+        lastActive: liveUser.lastActive,
+      );
+
+      if (mounted) {
+        Provider.of<UserProvider>(context, listen: false)
+            .updateLocalUser(updatedUser);
+        setState(() => _pendingAvatarFile = null);
+        _showSnackBar('Avatar removed.');
+      }
+    } catch (e) {
+      _showSnackBar('Failed to remove avatar: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ── Logout ────────────────────────────────────────────────────────────────
+
+  Future<void> _handleLogout() async {
+    setState(() => _isLoading = true);
+    try {
+      await widget.authService.signOut();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => SignInPage()),
+              (route) => false,
+        );
+      }
+    } catch (e) {
+      _showSnackBar('Failed to log out: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ── Password change ───────────────────────────────────────────────────────
 
   Future<void> _handlePasswordChange() async {
     final currentPassword = _currentPasswordController.text;
     final newPassword = _newPasswordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
+    if (currentPassword.isEmpty) {
+      _showSnackBar('Please enter your current password.', isError: true);
+      return;
+    }
     if (newPassword != confirmPassword) {
-      _showSnackBar('Passwords do not match', isError: true);
+      _showSnackBar('Passwords do not match.', isError: true);
       return;
     }
     if (newPassword.length < 6) {
-      _showSnackBar('Password must be at least 6 characters', isError: true);
+      _showSnackBar('Password must be at least 6 characters.', isError: true);
       return;
     }
 
     setState(() => _isLoading = true);
     try {
-      await Future.delayed(const Duration(seconds: 1)); // TODO: real impl
-      _showSnackBar('Password changed successfully');
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null || user.email == null) {
+        throw Exception('No logged-in user found.');
+      }
+
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: currentPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
+
+      _showSnackBar('Password changed successfully.');
       setState(() => _showPasswordChange = false);
       _currentPasswordController.clear();
       _newPasswordController.clear();
       _confirmPasswordController.clear();
+    } on FirebaseAuthException catch (e) {
+      final msg = switch (e.code) {
+        'wrong-password' => 'Current password is incorrect.',
+        'weak-password' => 'New password is too weak.',
+        'requires-recent-login' =>
+        'Please log out and log back in before changing your password.',
+        _ => 'Failed to change password: ${e.message}',
+      };
+      _showSnackBar(msg, isError: true);
     } catch (e) {
       _showSnackBar('Failed to change password: $e', isError: true);
     } finally {
@@ -117,27 +335,52 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _handleProfileUpdate() async {
-    final newName = _nameController.text;
-    final newUsername = _usernameController.text;
-    final newEmail = _emailController.text;
-    final newBio = _bioController.text;
+  // ── Profile update ────────────────────────────────────────────────────────
+
+  Future<void> _handleProfileUpdate(UserModel liveUser) async {
+    final newName = _nameController.text.trim();
+    final newUsername = _usernameController.text.trim();
+    final newEmail = _emailController.text.trim();
+    final newBio = _bioController.text.trim();
 
     if (newName.isEmpty || newUsername.isEmpty || newEmail.isEmpty) {
-      _showSnackBar('Name, username, and email are required', isError: true);
+      _showSnackBar('Name, username, and email are required.', isError: true);
       return;
     }
 
     setState(() => _isLoading = true);
     try {
-      final updatedData = {
+      // Upload pending avatar first so we capture the new URL below.
+      if (_pendingAvatarFile != null) {
+        await _uploadAvatar(liveUser);
+        liveUser =
+            Provider.of<UserProvider>(context, listen: false).currentUser ??
+                liveUser;
+      }
+
+      await widget.userService.updateUser(liveUser.uid, {
         'name': newName,
         'username': newUsername,
         'email': newEmail,
         'bio': newBio,
-      };
-      await widget.userService.updateUser(widget.currentUser.uid, updatedData);
-      _showSnackBar('Profile updated successfully');
+      });
+
+      final updatedUser = UserModel(
+        uid: liveUser.uid,
+        name: newName,
+        username: newUsername,
+        email: newEmail,
+        bio: newBio,
+        avatar: liveUser.avatar,
+        createdAt: liveUser.createdAt,
+        lastActive: liveUser.lastActive,
+      );
+
+      if (mounted) {
+        Provider.of<UserProvider>(context, listen: false)
+            .updateLocalUser(updatedUser);
+        _showSnackBar('Profile updated successfully.');
+      }
     } catch (e) {
       _showSnackBar('Failed to update profile: $e', isError: true);
     } finally {
@@ -145,13 +388,15 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  // ------------------------------------------------------------------ build --
+  // ── build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    // No Scaffold / AppBar here — MyExplorePage owns those.
+    final liveUser =
+        context.watch<UserProvider>().currentUser ?? widget.currentUser;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(16),
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
@@ -159,46 +404,141 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Section header
+              // ── Header
               Padding(
-                padding: const EdgeInsets.only(bottom: 24.0),
+                padding: const EdgeInsets.only(bottom: 24),
                 child: Row(
                   children: const [
                     Icon(Icons.settings, size: 32, color: Colors.orange),
                     SizedBox(width: 12),
-                    Text(
-                      'Settings',
-                      style: TextStyle(
-                          fontSize: 28, fontWeight: FontWeight.bold),
-                    ),
+                    Text('Settings',
+                        style: TextStyle(
+                            fontSize: 28, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
 
-              // Account Info card
+              // ── Account Information (live)
               _card(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _sectionTitle('Account Information'),
                     const SizedBox(height: 16),
+                    _buildAccountInfoRow('Name', liveUser.name ?? 'Not Set'),
                     _buildAccountInfoRow(
-                        'Name', widget.currentUser.name ?? 'Not Set'),
+                        'Username', liveUser.username ?? 'Not Set'),
                     _buildAccountInfoRow(
-                        'Username', widget.currentUser.username ?? 'Not Set'),
-                    _buildAccountInfoRow(
-                        'Email', widget.currentUser.email ?? 'Not Set'),
+                        'Email', liveUser.email ?? 'Not Set'),
                   ],
                 ),
               ),
 
-              // Update Profile card
+              // ── Update Profile
               _card(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _sectionTitle('Update Profile'),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 24),
+
+                    // ── Avatar picker ──────────────────────────────────────
+                    Center(
+                      child: Column(
+                        children: [
+                          GestureDetector(
+                            onTap: () => _showAvatarOptions(liveUser),
+                            child: Stack(
+                              alignment: Alignment.bottomRight,
+                              children: [
+                                CircleAvatar(
+                                  radius: 52,
+                                  backgroundColor: Colors.grey[200],
+                                  backgroundImage: _pendingAvatarFile != null
+                                      ? FileImage(_pendingAvatarFile!)
+                                  as ImageProvider
+                                      : (liveUser.avatar != null &&
+                                      liveUser.avatar!.isNotEmpty
+                                      ? NetworkImage(liveUser.avatar!)
+                                      : null),
+                                  child: (_pendingAvatarFile == null &&
+                                      (liveUser.avatar == null ||
+                                          liveUser.avatar!.isEmpty))
+                                      ? Text(
+                                    liveUser.name != null &&
+                                        liveUser.name!.isNotEmpty
+                                        ? liveUser.name![0].toUpperCase()
+                                        : '?',
+                                    style: const TextStyle(
+                                        fontSize: 36,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black54),
+                                  )
+                                      : null,
+                                ),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                        color: Colors.white, width: 2),
+                                  ),
+                                  padding: const EdgeInsets.all(6),
+                                  child: const Icon(Icons.camera_alt,
+                                      size: 16, color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text('Tap to change photo',
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.grey[500])),
+
+                          // Upload progress
+                          if (_uploadProgress != null) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: 160,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: _uploadProgress,
+                                  minHeight: 6,
+                                  backgroundColor: Colors.grey[200],
+                                  color: Colors.orange,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${((_uploadProgress ?? 0) * 100).toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                  fontSize: 11, color: Colors.grey[500]),
+                            ),
+                          ],
+
+                          // Pending-upload notice
+                          if (_pendingAvatarFile != null &&
+                              _uploadProgress == null) ...[
+                            const SizedBox(height: 10),
+                            Chip(
+                              avatar: const Icon(Icons.info_outline,
+                                  size: 14, color: Colors.orange),
+                              label: const Text(
+                                'New photo will save with Update Profile',
+                                style: TextStyle(fontSize: 11),
+                              ),
+                              backgroundColor: const Color(0xFFFFF3E0),
+                              side: BorderSide.none,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    // ── end avatar picker ──────────────────────────────────
+
+                    const SizedBox(height: 24),
                     _buildInputField('Name', _nameController, 'John Doe',
                         isRequired: true),
                     _buildInputField(
@@ -212,7 +552,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         'Bio', _bioController, 'Tell us about yourself...'),
                     const SizedBox(height: 16),
                     ElevatedButton(
-                      onPressed: _isLoading ? null : _handleProfileUpdate,
+                      onPressed: _isLoading
+                          ? null
+                          : () => _handleProfileUpdate(liveUser),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 20, vertical: 12),
@@ -227,7 +569,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
 
-              // Change Password card
+              // ── Change Password
               _card(
                 child: Column(
                   children: [
@@ -267,12 +609,12 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     if (_showPasswordChange)
                       Padding(
-                        padding: const EdgeInsets.only(top: 24.0),
+                        padding: const EdgeInsets.only(top: 24),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildPasswordField(
-                                'Current Password', _currentPasswordController),
+                            _buildPasswordField('Current Password',
+                                _currentPasswordController),
                             _buildPasswordField(
                                 'New Password', _newPasswordController),
                             _buildPasswordField('Confirm New Password',
@@ -299,16 +641,12 @@ class _SettingsPageState extends State<SettingsPage> {
                                 OutlinedButton(
                                   onPressed: _isLoading
                                       ? null
-                                      : () {
-                                    setState(() {
-                                      _showPasswordChange = false;
-                                      _currentPasswordController
-                                          .clear();
-                                      _newPasswordController.clear();
-                                      _confirmPasswordController
-                                          .clear();
-                                    });
-                                  },
+                                      : () => setState(() {
+                                    _showPasswordChange = false;
+                                    _currentPasswordController.clear();
+                                    _newPasswordController.clear();
+                                    _confirmPasswordController.clear();
+                                  }),
                                   style: OutlinedButton.styleFrom(
                                     side: BorderSide(
                                         color: Colors.grey[400]!),
@@ -329,7 +667,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
 
-              // Logout card
+              // ── Logout
               _card(
                 child: InkWell(
                   onTap: _isLoading ? null : _handleLogout,
@@ -371,17 +709,14 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  // --------------------------------------------------------- helper widgets --
+  // ── helper widgets ────────────────────────────────────────────────────────
 
-  Widget _card({required Widget child}) {
-    return Card(
-      elevation: 2,
-      shape:
-      RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(padding: const EdgeInsets.all(24.0), child: child),
-    );
-  }
+  Widget _card({required Widget child}) => Card(
+    elevation: 2,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    margin: const EdgeInsets.only(bottom: 16),
+    child: Padding(padding: const EdgeInsets.all(24), child: child),
+  );
 
   Widget _sectionTitle(String text) => Text(text,
       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600));
@@ -392,22 +727,20 @@ class _SettingsPageState extends State<SettingsPage> {
     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
   );
 
-  Widget _buildAccountInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-          const SizedBox(height: 4),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
+  Widget _buildAccountInfoRow(String label, String value) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+        const SizedBox(height: 4),
+        Text(value,
+            style: const TextStyle(
+                fontSize: 16, fontWeight: FontWeight.w500)),
+      ],
+    ),
+  );
 
   Widget _buildInputField(
       String label,
@@ -415,96 +748,92 @@ class _SettingsPageState extends State<SettingsPage> {
       String hintText, {
         TextInputType keyboardType = TextInputType.text,
         bool isRequired = false,
-      }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text.rich(TextSpan(
-            text: label,
-            style: const TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w500),
-            children: isRequired
-                ? const [
-              TextSpan(
-                  text: ' *',
-                  style: TextStyle(color: Colors.red))
-            ]
-                : null,
-          )),
-          const SizedBox(height: 8),
-          TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            decoration: InputDecoration(
-              hintText: hintText,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8)),
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 12),
+      }) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text.rich(TextSpan(
+              text: label,
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w500),
+              children: isRequired
+                  ? const [
+                TextSpan(
+                    text: ' *', style: TextStyle(color: Colors.red))
+              ]
+                  : null,
+            )),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              keyboardType: keyboardType,
+              decoration: InputDecoration(
+                hintText: hintText,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 12),
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
 
   Widget _buildTextAreaField(
       String label,
       TextEditingController controller,
       String hintText,
-      ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: controller,
-            maxLines: 4,
-            decoration: InputDecoration(
-              hintText: hintText,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8)),
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 12),
-              alignLabelWithHint: true,
+      ) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: hintText,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 12),
+                alignLabelWithHint: true,
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
 
   Widget _buildPasswordField(
-      String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: controller,
-            obscureText: true,
-            decoration: InputDecoration(
-              hintText: '••••••••',
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8)),
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 12),
+      String label, TextEditingController controller) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              decoration: InputDecoration(
+                hintText: '••••••••',
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 12),
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
 }
