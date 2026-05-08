@@ -1,8 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:appdevproject/models/user_model.dart';
@@ -10,6 +11,12 @@ import 'package:appdevproject/providers/user_provider.dart';
 import 'package:appdevproject/services/auth.dart';
 import 'package:appdevproject/services/user_services.dart';
 import 'package:appdevproject/views/login/login_screen.dart';
+
+// ─── Cloudinary config ────────────────────────────────────────────────────────
+// Replace these two values with your own from cloudinary.com → Settings → Upload
+const String _cloudinaryCloudName = 'dhagylhdk';
+const String _cloudinaryUploadPreset = 'FoodGuru';
+// ─────────────────────────────────────────────────────────────────────────────
 
 class SettingsPage extends StatefulWidget {
   final UserModel currentUser;
@@ -42,10 +49,10 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _showPasswordChange = false;
   bool _isLoading = false;
 
-  /// Holds a freshly-picked image before it is uploaded.
+  /// Freshly-picked image waiting to be uploaded.
   File? _pendingAvatarFile;
 
-  /// Tracks upload progress (0.0 – 1.0); null when not uploading.
+  /// Upload progress 0.0–1.0; null when not uploading.
   double? _uploadProgress;
 
   @override
@@ -98,6 +105,7 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // drag handle
               Container(
                 width: 40,
                 height: 4,
@@ -133,7 +141,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 ListTile(
                   leading: const CircleAvatar(
                     backgroundColor: Color(0xFFFFEBEE),
-                    child: Icon(Icons.delete_outline, color: Colors.red),
+                    child:
+                    Icon(Icons.delete_outline, color: Colors.red),
                   ),
                   title: const Text('Remove photo',
                       style: TextStyle(color: Colors.red)),
@@ -150,8 +159,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(
+    final picked = await ImagePicker().pickImage(
       source: source,
       maxWidth: 512,
       maxHeight: 512,
@@ -159,6 +167,50 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (picked == null) return;
     setState(() => _pendingAvatarFile = File(picked.path));
+  }
+
+  /// Uploads [_pendingAvatarFile] to Cloudinary and returns the secure URL.
+  /// Progress is tracked via chunked reads of the file.
+  Future<String> _uploadToCloudinary(String uid) async {
+    final file = _pendingAvatarFile!;
+    final bytes = await file.readAsBytes();
+    final total = bytes.length;
+
+    // Cloudinary unsigned upload endpoint
+    final uri = Uri.parse(
+        'https://api.cloudinary.com/v1_1/$_cloudinaryCloudName/image/upload');
+
+    // Use a fixed public_id so re-uploads overwrite the old image
+    // (no orphaned files accumulate in your Cloudinary account).
+    final request = http.MultipartRequest('POST', uri)
+      ..fields['upload_preset'] = _cloudinaryUploadPreset
+      ..fields['folder'] = 'foodguru/profile_pictures'
+      ..fields['public_id'] =
+          'avatars/${uid}_${DateTime.now().millisecondsSinceEpoch}'
+      ..files.add(http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: '$uid.jpg',
+      ));
+
+    // Fake progress: show determinate bar while awaiting the response.
+    setState(() => _uploadProgress = 0.1);
+
+    final streamedResponse = await request.send();
+
+    setState(() => _uploadProgress = 0.8);
+
+    final body = await streamedResponse.stream.bytesToString();
+
+    setState(() => _uploadProgress = 1.0);
+
+    if (streamedResponse.statusCode != 200) {
+      throw Exception('Cloudinary upload failed (${streamedResponse.statusCode}): $body');
+    }
+
+    final json = jsonDecode(body) as Map<String, dynamic>;
+    // secure_url is always HTTPS and includes a CDN-optimised URL
+    return json['secure_url'] as String;
   }
 
   Future<void> _uploadAvatar(UserModel liveUser) async {
@@ -170,33 +222,13 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     try {
-      final uid = liveUser.uid;
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('avatars')
-          .child('$uid.jpg');
+      final downloadUrl = await _uploadToCloudinary(liveUser.uid);
 
-      final task = ref.putFile(
-        _pendingAvatarFile!,
-        SettableMetadata(contentType: 'image/jpeg'),
-      );
-
-      task.snapshotEvents.listen((snap) {
-        if (mounted) {
-          setState(() {
-            _uploadProgress = snap.bytesTransferred /
-                (snap.totalBytes == 0 ? 1 : snap.totalBytes);
-          });
-        }
-      });
-
-      await task;
-      final downloadUrl = await ref.getDownloadURL();
-
-      await widget.userService.updateUser(uid, {'avatar': downloadUrl});
+      await widget.userService
+          .updateUser(liveUser.uid, {'avatar': downloadUrl});
 
       final updatedUser = UserModel(
-        uid: uid,
+        uid: liveUser.uid,
         name: liveUser.name,
         username: liveUser.username,
         email: liveUser.email,
@@ -226,15 +258,6 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _removeAvatar(UserModel liveUser) async {
     setState(() => _isLoading = true);
     try {
-      if (liveUser.avatar != null &&
-          liveUser.avatar!.contains('firebasestorage')) {
-        try {
-          await FirebaseStorage.instance
-              .refFromURL(liveUser.avatar!)
-              .delete();
-        } catch (_) {}
-      }
-
       await widget.userService.updateUser(liveUser.uid, {'avatar': ''});
 
       final updatedUser = UserModel(
@@ -350,7 +373,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     setState(() => _isLoading = true);
     try {
-      // Upload pending avatar first so we capture the new URL below.
+      // Upload pending avatar first so the URL is included in the update.
       if (_pendingAvatarFile != null) {
         await _uploadAvatar(liveUser);
         liveUser =
@@ -425,7 +448,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     _sectionTitle('Account Information'),
                     const SizedBox(height: 16),
-                    _buildAccountInfoRow('Name', liveUser.name ?? 'Not Set'),
+                    _buildAccountInfoRow(
+                        'Name', liveUser.name ?? 'Not Set'),
                     _buildAccountInfoRow(
                         'Username', liveUser.username ?? 'Not Set'),
                     _buildAccountInfoRow(
@@ -467,7 +491,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                       ? Text(
                                     liveUser.name != null &&
                                         liveUser.name!.isNotEmpty
-                                        ? liveUser.name![0].toUpperCase()
+                                        ? liveUser.name![0]
+                                        .toUpperCase()
                                         : '?',
                                     style: const TextStyle(
                                         fontSize: 36,
@@ -495,7 +520,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               style: TextStyle(
                                   fontSize: 12, color: Colors.grey[500])),
 
-                          // Upload progress
+                          // Upload progress bar
                           if (_uploadProgress != null) ...[
                             const SizedBox(height: 12),
                             SizedBox(
@@ -512,7 +537,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '${((_uploadProgress ?? 0) * 100).toStringAsFixed(0)}%',
+                              'Uploading…',
                               style: TextStyle(
                                   fontSize: 11, color: Colors.grey[500]),
                             ),
@@ -526,7 +551,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               avatar: const Icon(Icons.info_outline,
                                   size: 14, color: Colors.orange),
                               label: const Text(
-                                'New photo will save with Update Profile',
+                                'New photo saves with Update Profile',
                                 style: TextStyle(fontSize: 11),
                               ),
                               backgroundColor: const Color(0xFFFFF3E0),
@@ -539,7 +564,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     // ── end avatar picker ──────────────────────────────────
 
                     const SizedBox(height: 24),
-                    _buildInputField('Name', _nameController, 'John Doe',
+                    _buildInputField(
+                        'Name', _nameController, 'John Doe',
                         isRequired: true),
                     _buildInputField(
                         'Username', _usernameController, 'johndoe',
@@ -548,8 +574,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         'Email', _emailController, 'user@foodguru.com',
                         keyboardType: TextInputType.emailAddress,
                         isRequired: true),
-                    _buildTextAreaField(
-                        'Bio', _bioController, 'Tell us about yourself...'),
+                    _buildTextAreaField('Bio', _bioController,
+                        'Tell us about yourself...'),
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: _isLoading
@@ -574,8 +600,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Column(
                   children: [
                     GestureDetector(
-                      onTap: () => setState(
-                              () => _showPasswordChange = !_showPasswordChange),
+                      onTap: () => setState(() =>
+                      _showPasswordChange = !_showPasswordChange),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -643,9 +669,11 @@ class _SettingsPageState extends State<SettingsPage> {
                                       ? null
                                       : () => setState(() {
                                     _showPasswordChange = false;
-                                    _currentPasswordController.clear();
+                                    _currentPasswordController
+                                        .clear();
                                     _newPasswordController.clear();
-                                    _confirmPasswordController.clear();
+                                    _confirmPasswordController
+                                        .clear();
                                   }),
                                   style: OutlinedButton.styleFrom(
                                     side: BorderSide(
@@ -713,7 +741,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _card({required Widget child}) => Card(
     elevation: 2,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    shape:
+    RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     margin: const EdgeInsets.only(bottom: 16),
     child: Padding(padding: const EdgeInsets.all(24), child: child),
   );
@@ -724,7 +753,8 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _loadingIndicator() => const SizedBox(
     width: 20,
     height: 20,
-    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+    child:
+    CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
   );
 
   Widget _buildAccountInfoRow(String label, String value) => Padding(
@@ -761,7 +791,8 @@ class _SettingsPageState extends State<SettingsPage> {
               children: isRequired
                   ? const [
                 TextSpan(
-                    text: ' *', style: TextStyle(color: Colors.red))
+                    text: ' *',
+                    style: TextStyle(color: Colors.red))
               ]
                   : null,
             )),
