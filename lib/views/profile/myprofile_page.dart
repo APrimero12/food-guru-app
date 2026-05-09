@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:appdevproject/models/user_model.dart';
 import 'package:appdevproject/services/recipe_services.dart';
+import 'package:appdevproject/views/recipe/recipe_detail_page.dart';
 import '../widgets.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -461,6 +462,12 @@ class _ProfilePageState extends State<ProfilePage>
             likes:   '${(data['likes'] as num?)?.toInt() ?? 0}',
             isLiked: _likedIds.contains(recipeId),
             onLikeTapped: () => _toggleLike(recipeId),
+            onTapped: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => RecipeDetailPage(data: data),
+              ),
+            ),
           );
         },
       ),

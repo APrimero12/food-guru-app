@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:appdevproject/providers/user_provider.dart';
 import 'package:appdevproject/services/recipe_services.dart';
 
+import 'package:appdevproject/views/recipe/recipe_detail_page.dart';
+import 'package:appdevproject/views/recipe/recipe_detail_page.dart';
 import '../widgets.dart';
 
 const int _pageSize = 10;
@@ -344,6 +346,12 @@ class _ExploreContentState extends State<ExploreContent> {
                   likes:   '${(data['likes'] as num?)?.toInt() ?? 0}',
                   isLiked: _likedIds.contains(recipeId),
                   onLikeTapped: () => _toggleLike(recipeId),
+                  onTapped: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RecipeDetailPage(data: data),
+                    ),
+                  ),
                 );
               },
               childCount: _recipes.length,
