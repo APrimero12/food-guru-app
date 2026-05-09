@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:appdevproject/providers/user_provider.dart';
 import 'package:appdevproject/services/recipe_services.dart';
+import 'package:appdevproject/services/cloudinary_service.dart';
 import 'package:appdevproject/views/profile/user_profile_page.dart';
 
 class RecipeDetailPage extends StatefulWidget {
@@ -156,7 +157,10 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                 children: [
                   // Image
                   imageUrl.isNotEmpty
-                      ? Image.network(imageUrl, fit: BoxFit.cover)
+                      ? Image.network(
+                    CloudinaryService.detailHero(imageUrl),
+                    fit: BoxFit.cover,
+                  )
                       : Container(
                     color: Colors.grey[200],
                     child: const Icon(Icons.restaurant,

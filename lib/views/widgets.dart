@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:appdevproject/services/cloudinary_service.dart';
+import 'package:appdevproject/services/cloudinary_service.dart';
+import 'package:appdevproject/services/cloudinary_service.dart';
 
 class RecipeCard extends StatelessWidget {
   final String imageUrl;
@@ -54,7 +57,7 @@ class RecipeCard extends StatelessWidget {
                   Positioned.fill(
                     child: imageUrl.isNotEmpty
                         ? Image.network(
-                      imageUrl,
+                      CloudinaryService.cardThumbnail(imageUrl),
                       fit: BoxFit.cover,
                       loadingBuilder: (_, child, progress) =>
                       progress == null

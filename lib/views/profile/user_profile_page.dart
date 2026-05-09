@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:appdevproject/models/user_model.dart';
 import 'package:appdevproject/services/recipe_services.dart';
 import 'package:appdevproject/services/user_services.dart';
+import 'package:appdevproject/services/cloudinary_service.dart';
+import 'package:appdevproject/services/cloudinary_service.dart';
 import 'package:appdevproject/views/recipe/recipe_detail_page.dart';
 
 class UserProfilePage extends StatefulWidget {
@@ -286,7 +288,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                                 child: (data['image'] as String? ?? '')
                                     .isNotEmpty
                                     ? Image.network(
-                                  data['image'] as String,
+                                  CloudinaryService.cardThumbnail(data['image'] as String? ?? ''),
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) =>
                                       Container(
