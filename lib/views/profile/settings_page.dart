@@ -40,13 +40,21 @@ class _SettingsPageState extends State<SettingsPage> {
   TextEditingController();
 
   bool _showPasswordChange = false;
-  bool _isLoading = false;
+  bool _isLoading    = false;
+  bool _isGoogleUser = false;
   File? _pendingAvatarFile;
   double? _uploadProgress;
 
   @override
   void initState() {
     super.initState();
+    // Check whether this account was created via Google Sign-In.
+    // Google accounts have no Firebase password, so the change-password
+    // section should not be shown to them.
+    _isGoogleUser = FirebaseAuth.instance.currentUser?.providerData
+        .any((info) => info.providerId == 'google.com') ??
+        false;
+
     _nameController =
         TextEditingController(text: widget.currentUser.name ?? '');
     _usernameController =
@@ -417,66 +425,67 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               )),
 
-              // Change password
-              _card(child: Column(children: [
-                GestureDetector(
-                  onTap: () => setState(() => _showPasswordChange = !_showPasswordChange),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(children: [
-                        Icon(Icons.lock, size: 20, color: Colors.grey[600]),
-                        const SizedBox(width: 12),
-                        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          const Text('Change Password',
-                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-                          Text('Update your password',
-                              style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+              // Change password — hidden for Google accounts
+              if (!_isGoogleUser)
+                _card(child: Column(children: [
+                  GestureDetector(
+                    onTap: () => setState(() => _showPasswordChange = !_showPasswordChange),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(children: [
+                          Icon(Icons.lock, size: 20, color: Colors.grey[600]),
+                          const SizedBox(width: 12),
+                          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text('Change Password',
+                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                            Text('Update your password',
+                                style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                          ]),
+                        ]),
+                        Transform.rotate(
+                          angle: _showPasswordChange ? 1.5708 : 0,
+                          child: Icon(Icons.chevron_right, size: 20, color: Colors.grey[400]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_showPasswordChange)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 24),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _passwordField('Current Password', _currentPasswordController),
+                        _passwordField('New Password', _newPasswordController),
+                        _passwordField('Confirm New Password', _confirmPasswordController),
+                        const SizedBox(height: 16),
+                        Row(children: [
+                          ElevatedButton(
+                            onPressed: _isLoading ? null : _handlePasswordChange,
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            child: _isLoading ? _spinner() : const Text('Update Password'),
+                          ),
+                          const SizedBox(width: 12),
+                          OutlinedButton(
+                            onPressed: _isLoading ? null : () => setState(() {
+                              _showPasswordChange = false;
+                              _currentPasswordController.clear();
+                              _newPasswordController.clear();
+                              _confirmPasswordController.clear();
+                            }),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: Colors.grey[400]!),
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            child: const Text('Cancel'),
+                          ),
                         ]),
                       ]),
-                      Transform.rotate(
-                        angle: _showPasswordChange ? 1.5708 : 0,
-                        child: Icon(Icons.chevron_right, size: 20, color: Colors.grey[400]),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_showPasswordChange)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 24),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      _passwordField('Current Password', _currentPasswordController),
-                      _passwordField('New Password', _newPasswordController),
-                      _passwordField('Confirm New Password', _confirmPasswordController),
-                      const SizedBox(height: 16),
-                      Row(children: [
-                        ElevatedButton(
-                          onPressed: _isLoading ? null : _handlePasswordChange,
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          child: _isLoading ? _spinner() : const Text('Update Password'),
-                        ),
-                        const SizedBox(width: 12),
-                        OutlinedButton(
-                          onPressed: _isLoading ? null : () => setState(() {
-                            _showPasswordChange = false;
-                            _currentPasswordController.clear();
-                            _newPasswordController.clear();
-                            _confirmPasswordController.clear();
-                          }),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: Colors.grey[400]!),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          child: const Text('Cancel'),
-                        ),
-                      ]),
-                    ]),
-                  ),
-              ])),
+                    ),
+                ])),
 
               // Logout
               _card(child: InkWell(
