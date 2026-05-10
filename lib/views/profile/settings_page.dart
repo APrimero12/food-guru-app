@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:appdevproject/models/user_model.dart';
 import 'package:appdevproject/providers/user_provider.dart';
 import 'package:appdevproject/services/auth.dart';
+import 'package:appdevproject/services/recipe_services.dart';
 import 'package:appdevproject/services/cloudinary_service.dart';
 import 'package:appdevproject/services/user_services.dart';
 import 'package:appdevproject/views/login/login_screen.dart';
@@ -160,6 +161,8 @@ class _SettingsPageState extends State<SettingsPage> {
         onProgress: (p) => setState(() => _uploadProgress = p),
       );
       await widget.userService.updateUser(liveUser.uid, {'avatar': url});
+      // Propagate the new avatar to all recipe documents this user has posted.
+      await RecipeService().updateUserAvatarOnRecipes(liveUser.uid, url);
       final updated = UserModel(
         uid: liveUser.uid, name: liveUser.name, username: liveUser.username,
         email: liveUser.email, bio: liveUser.bio, avatar: url,

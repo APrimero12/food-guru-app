@@ -234,6 +234,42 @@ class RecipeService {
     }
   }
 
+
+  /// Updates the [userAvatar] field on every recipe document the user has
+  /// posted. Called after a successful avatar upload so recipe cards in the
+  /// explore feed and profile grids immediately show the new photo.
+  ///
+  /// Uses batched writes (max 500 per batch) so it works regardless of how
+  /// many recipes the user has published.
+  Future<void> updateUserAvatarOnRecipes(
+      String userId, String newAvatarUrl) async {
+    try {
+      // Fetch just the document references — no need to read full data.
+      final snapshot = await _recipesCollection
+          .where('userId', isEqualTo: userId)
+          .get();
+
+      if (snapshot.docs.isEmpty) return;
+
+      const batchLimit = 500;
+      for (var i = 0; i < snapshot.docs.length; i += batchLimit) {
+        final batch = FirebaseFirestore.instance.batch();
+        final chunk = snapshot.docs.sublist(
+          i,
+          (i + batchLimit).clamp(0, snapshot.docs.length),
+        );
+        for (final doc in chunk) {
+          batch.update(doc.reference, {'userAvatar': newAvatarUrl});
+        }
+        await batch.commit();
+      }
+    } catch (e) {
+      print('Error updating userAvatar on recipes: $e');
+      // Non-critical — don't rethrow; the avatar is already saved on the
+      // user document, so only the recipe cards are temporarily stale.
+    }
+  }
+
   Future<void> toggleLike(String recipeId, String userId) async {
     final likeDocRef = FirebaseFirestore.instance
         .collection('user_likes')
