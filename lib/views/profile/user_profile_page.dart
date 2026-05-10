@@ -250,6 +250,51 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           ),
                         ],
                       ),
+
+                      // Follow / Unfollow button — hidden on your own profile
+                      if (Provider.of<UserProvider>(context, listen: false)
+                          .currentUser
+                          ?.uid !=
+                          widget.userId) ...[
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: 160,
+                          child: ElevatedButton(
+                            onPressed: _followLoading ? null : _toggleFollow,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                              _isFollowing ? Colors.white : Colors.orange,
+                              foregroundColor: _isFollowing
+                                  ? Colors.grey[700]
+                                  : Colors.white,
+                              side: BorderSide(
+                                color: _isFollowing
+                                    ? Colors.grey[300]!
+                                    : Colors.orange,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24)),
+                              padding:
+                              const EdgeInsets.symmetric(vertical: 10),
+                              elevation: 0,
+                            ),
+                            child: _followLoading
+                                ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.orange),
+                            )
+                                : Text(
+                              _isFollowing ? 'Following' : 'Follow',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14),
+                            ),
+                          ),
+                        ),
+                      ],
                     ]),
                   ),
                 ),

@@ -17,6 +17,7 @@ class _FriendsPageState extends State<FriendsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final FollowService _followService = FollowService();
+  final TextEditingController _searchController = TextEditingController();
 
   List<UserModel> _following = [];
   List<UserModel> _followers = [];
@@ -26,19 +27,39 @@ class _FriendsPageState extends State<FriendsPage>
   /// button state without waiting for Firestore on every toggle.
   final Set<String> _followingIds = {};
 
+  String _searchQuery = '';
   bool _isLoading = true;
   bool _hasError  = false;
+
+  // ── filtered views (computed from search query) ───────────────────────────
+
+  List<UserModel> get _displayFollowing => _filter(_following);
+  List<UserModel> get _displayFollowers => _filter(_followers);
+  List<UserModel> get _displayDiscover  => _filter(_discover);
+
+  List<UserModel> _filter(List<UserModel> list) {
+    if (_searchQuery.isEmpty) return list;
+    return list.where((u) {
+      final name     = (u.name     ?? '').toLowerCase();
+      final username = (u.username ?? '').toLowerCase();
+      return name.contains(_searchQuery) || username.contains(_searchQuery);
+    }).toList();
+  }
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _searchController.addListener(() {
+      setState(() => _searchQuery = _searchController.text.trim().toLowerCase());
+    });
     _loadData();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -154,6 +175,34 @@ class _FriendsPageState extends State<FriendsPage>
           ),
         ),
 
+        // ── search bar ────────────────────────────────────────────────────────
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search by name or username…',
+              hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+              prefixIcon: const Icon(Icons.search, color: Colors.grey),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                icon: const Icon(Icons.clear,
+                    color: Colors.grey, size: 18),
+                onPressed: () => _searchController.clear(),
+              )
+                  : null,
+              filled: true,
+              fillColor: Colors.grey[100],
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+
         // ── tab content ───────────────────────────────────────────────────────
         Expanded(
           child: _isLoading
@@ -177,6 +226,8 @@ class _FriendsPageState extends State<FriendsPage>
   // ── following tab ─────────────────────────────────────────────────────────
 
   Widget _buildFollowingTab() {
+    final list = _displayFollowing;
+
     if (_following.isEmpty) {
       return _buildEmptyState(
         icon: Icons.people_outline,
@@ -190,16 +241,20 @@ class _FriendsPageState extends State<FriendsPage>
       );
     }
 
+    if (list.isEmpty) {
+      return _buildNoSearchResults();
+    }
+
     return RefreshIndicator(
       color: Colors.orange,
       onRefresh: _loadData,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: _following.length,
+        itemCount: list.length,
         separatorBuilder: (_, __) =>
             Divider(height: 1, color: Colors.grey[200]),
         itemBuilder: (context, index) {
-          final user = _following[index];
+          final user = list[index];
           return _userTile(
             user,
             isFollowing: true,
@@ -215,6 +270,8 @@ class _FriendsPageState extends State<FriendsPage>
   // ── followers tab ─────────────────────────────────────────────────────────
 
   Widget _buildFollowersTab() {
+    final list = _displayFollowers;
+
     if (_followers.isEmpty) {
       return _buildEmptyState(
         icon: Icons.people_outline,
@@ -223,16 +280,20 @@ class _FriendsPageState extends State<FriendsPage>
       );
     }
 
+    if (list.isEmpty) {
+      return _buildNoSearchResults();
+    }
+
     return RefreshIndicator(
       color: Colors.orange,
       onRefresh: _loadData,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: _followers.length,
+        itemCount: list.length,
         separatorBuilder: (_, __) =>
             Divider(height: 1, color: Colors.grey[200]),
         itemBuilder: (context, index) {
-          final user = _followers[index];
+          final user = list[index];
           final alreadyFollowing = _followingIds.contains(user.uid);
           return _userTile(
             user,
@@ -249,30 +310,30 @@ class _FriendsPageState extends State<FriendsPage>
   // ── discover tab ──────────────────────────────────────────────────────────
 
   Widget _buildDiscoverTab() {
+    final list = _displayDiscover;
+
     return RefreshIndicator(
       color: Colors.orange,
       onRefresh: _loadData,
       child: CustomScrollView(
         slivers: [
-          // Header
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16, 20, 16, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Discover People',
-                      style: TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold)),
-                  SizedBox(height: 4),
-                  Text(
-                    'Find food lovers to follow',
-                    style: TextStyle(color: Colors.grey, fontSize: 13),
-                  ),
-                ],
+          if (_searchQuery.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Discover People',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
+                    SizedBox(height: 4),
+                    Text('Find food lovers to follow',
+                        style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  ],
+                ),
               ),
             ),
-          ),
 
           if (_discover.isEmpty)
             SliverFillRemaining(
@@ -283,27 +344,26 @@ class _FriendsPageState extends State<FriendsPage>
                 "You've followed everyone available. Check back later!",
               ),
             )
+          else if (list.isEmpty)
+            SliverFillRemaining(child: _buildNoSearchResults())
           else
             SliverList(
               delegate: SliverChildBuilderDelegate(
                     (context, index) {
-                  if (index < _discover.length) {
-                    final user = _discover[index];
-                    return Column(children: [
-                      _userTile(
-                        user,
-                        isFollowing: _followingIds.contains(user.uid),
-                        buttonLabel:
-                        _followingIds.contains(user.uid) ? 'Following' : 'Follow',
-                        buttonFilled: !_followingIds.contains(user.uid),
-                        onToggle: () => _toggleFollow(user),
-                      ),
-                      Divider(height: 1, color: Colors.grey[200]),
-                    ]);
-                  }
-                  return null;
+                  final user = list[index];
+                  return Column(children: [
+                    _userTile(
+                      user,
+                      isFollowing: _followingIds.contains(user.uid),
+                      buttonLabel:
+                      _followingIds.contains(user.uid) ? 'Following' : 'Follow',
+                      buttonFilled: !_followingIds.contains(user.uid),
+                      onToggle: () => _toggleFollow(user),
+                    ),
+                    Divider(height: 1, color: Colors.grey[200]),
+                  ]);
                 },
-                childCount: _discover.length,
+                childCount: list.length,
               ),
             ),
         ],
@@ -408,6 +468,29 @@ class _FriendsPageState extends State<FriendsPage>
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: Colors.grey[500])),
             if (action != null) ...[const SizedBox(height: 12), action],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoSearchResults() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(48),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off, size: 56, color: Colors.grey[300]),
+            const SizedBox(height: 16),
+            Text('No results for "$_searchQuery"',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text('Try a different name or username.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Colors.grey[500])),
           ],
         ),
       ),
