@@ -235,16 +235,17 @@ class RecipeService {
   }
 
 
-  /// Updates the [userAvatar] field on every recipe document the user has
-  /// posted. Called after a successful avatar upload so recipe cards in the
-  /// explore feed and profile grids immediately show the new photo.
+  /// Batch-updates any user-related fields (e.g. [userName], [userAvatar])
+  /// on every recipe document this user has posted.
   ///
-  /// Uses batched writes (max 500 per batch) so it works regardless of how
-  /// many recipes the user has published.
-  Future<void> updateUserAvatarOnRecipes(
-      String userId, String newAvatarUrl) async {
+  /// Call this whenever profile data that is denormalised into recipe
+  /// documents changes, so the explore feed and profile grids stay in sync.
+  ///
+  /// Uses batched writes (max 500 per batch) to handle any recipe count.
+  Future<void> updateUserInfoOnRecipes(
+      String userId, Map<String, dynamic> fields) async {
+    if (fields.isEmpty) return;
     try {
-      // Fetch just the document references — no need to read full data.
       final snapshot = await _recipesCollection
           .where('userId', isEqualTo: userId)
           .get();
@@ -259,14 +260,13 @@ class RecipeService {
           (i + batchLimit).clamp(0, snapshot.docs.length),
         );
         for (final doc in chunk) {
-          batch.update(doc.reference, {'userAvatar': newAvatarUrl});
+          batch.update(doc.reference, fields);
         }
         await batch.commit();
       }
     } catch (e) {
-      print('Error updating userAvatar on recipes: $e');
-      // Non-critical — don't rethrow; the avatar is already saved on the
-      // user document, so only the recipe cards are temporarily stale.
+      print('Error updating user info on recipes: $e');
+      // Non-critical — don't rethrow; the user document is already updated.
     }
   }
 

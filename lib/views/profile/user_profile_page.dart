@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:appdevproject/models/user_model.dart';
+import 'package:appdevproject/providers/user_provider.dart';
+import 'package:appdevproject/services/follow_service.dart';
 import 'package:appdevproject/services/recipe_services.dart';
 import 'package:appdevproject/services/user_services.dart';
 import 'package:appdevproject/services/cloudinary_service.dart';
@@ -23,6 +26,10 @@ class UserProfilePage extends StatefulWidget {
 class _UserProfilePageState extends State<UserProfilePage> {
   final UserService   _userService   = UserService();
   final RecipeService _recipeService = RecipeService();
+  final FollowService _followService = FollowService();
+
+  bool _isFollowing   = false;
+  bool _followLoading = false;
 
   UserModel?                 _user;
   List<Map<String, dynamic>> _recipes = [];
@@ -37,19 +44,55 @@ class _UserProfilePageState extends State<UserProfilePage> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final results = await Future.wait([
+      final currentUid = Provider.of<UserProvider>(context, listen: false)
+          .currentUser
+          ?.uid;
+
+      final futures = [
         _userService.getUser(widget.userId),
         _recipeService.getRecipesByUser(widget.userId),
-      ]);
+        if (currentUid != null && currentUid != widget.userId)
+          _followService.isFollowing(currentUid, widget.userId),
+      ];
+
+      final results = await Future.wait(futures);
+
       if (mounted) {
         setState(() {
-          _user      = results[0] as UserModel?;
-          _recipes   = results[1] as List<Map<String, dynamic>>;
-          _isLoading = false;
+          _user        = results[0] as UserModel?;
+          _recipes     = results[1] as List<Map<String, dynamic>>;
+          _isFollowing = results.length > 2 ? results[2] as bool : false;
+          _isLoading   = false;
         });
       }
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ── follow toggle ────────────────────────────────────────────────────────
+
+  Future<void> _toggleFollow() async {
+    final currentUid = Provider.of<UserProvider>(context, listen: false)
+        .currentUser
+        ?.uid;
+    if (currentUid == null || _followLoading) return;
+
+    setState(() => _followLoading = true);
+
+    final wasFollowing = _isFollowing;
+    setState(() => _isFollowing = !_isFollowing);
+
+    try {
+      if (wasFollowing) {
+        await _followService.unfollowUser(currentUid, widget.userId);
+      } else {
+        await _followService.followUser(currentUid, widget.userId);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isFollowing = wasFollowing);
+    } finally {
+      if (mounted) setState(() => _followLoading = false);
     }
   }
 

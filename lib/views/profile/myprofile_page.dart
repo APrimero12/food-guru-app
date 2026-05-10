@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:appdevproject/models/user_model.dart';
+import 'package:appdevproject/services/cloudinary_service.dart';
+import 'package:appdevproject/services/follow_service.dart';
 import 'package:appdevproject/services/recipe_services.dart';
 import 'package:appdevproject/views/recipe/recipe_detail_page.dart';
 import '../widgets.dart';
@@ -24,6 +26,10 @@ class _ProfilePageState extends State<ProfilePage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final RecipeService _recipeService = RecipeService();
+  final FollowService  _followService  = FollowService();
+
+  int _followingCount = 0;
+  int _followersCount = 0;
 
   List<Map<String, dynamic>> _myRecipes    = [];
   List<Map<String, dynamic>> _likedRecipes = [];
@@ -59,11 +65,15 @@ class _ProfilePageState extends State<ProfilePage>
       final results = await Future.wait([
         _recipeService.getRecipesByUser(widget.user.uid),
         _recipeService.getLikedRecipes(widget.user.uid),
+        _followService.getFollowingCount(widget.user.uid),
+        _followService.getFollowersCount(widget.user.uid),
       ]);
       if (mounted) {
         setState(() {
-          _myRecipes    = results[0];
-          _likedRecipes = results[1];
+          _myRecipes      = results[0] as List<Map<String, dynamic>>;
+          _likedRecipes   = results[1] as List<Map<String, dynamic>>;
+          _followingCount = results[2] as int;
+          _followersCount = results[3] as int;
           _likedIds
             ..clear()
             ..addAll(_likedRecipes.map((r) => r['id'] as String));
@@ -312,13 +322,13 @@ class _ProfilePageState extends State<ProfilePage>
                         GestureDetector(
                           onTap: widget.onCommunityTapped,
                           child: _statItem(
-                              Icons.people, Colors.blue, '0', 'Following'),
+                              Icons.people, Colors.blue, '$_followingCount', 'Following'),
                         ),
                         _divider(),
                         GestureDetector(
                           onTap: widget.onCommunityTapped,
                           child: _statItem(
-                              Icons.people, Colors.green, '0', 'Followers'),
+                              Icons.people, Colors.green, '$_followersCount', 'Followers'),
                         ),
                       ],
                     ),

@@ -162,7 +162,7 @@ class _SettingsPageState extends State<SettingsPage> {
       );
       await widget.userService.updateUser(liveUser.uid, {'avatar': url});
       // Propagate the new avatar to all recipe documents this user has posted.
-      await RecipeService().updateUserAvatarOnRecipes(liveUser.uid, url);
+      await RecipeService().updateUserInfoOnRecipes(liveUser.uid, {'userAvatar': url});
       final updated = UserModel(
         uid: liveUser.uid, name: liveUser.name, username: liveUser.username,
         email: liveUser.email, bio: liveUser.bio, avatar: url,
@@ -280,6 +280,11 @@ class _SettingsPageState extends State<SettingsPage> {
         'name': newName, 'username': newUsername,
         'email': newEmail, 'bio': newBio,
       });
+      // Keep denormalised recipe fields in sync with the updated profile.
+      await RecipeService().updateUserInfoOnRecipes(
+        liveUser.uid,
+        {'userName': newName},
+      );
       final updated = UserModel(
         uid: liveUser.uid, name: newName, username: newUsername,
         email: newEmail, bio: newBio, avatar: liveUser.avatar,
