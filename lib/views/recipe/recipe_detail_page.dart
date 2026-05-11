@@ -21,8 +21,8 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
   final RecipeService _recipeService = RecipeService();
   final CartService   _cartService   = CartService();
 
-  bool _isLiked     = false;
-  bool _likeLoading = false;
+  // Only track the displayed like count locally for optimistic updates.
+  // Like state (filled/unfilled heart) comes from UserProvider.
   late int _likeCount;
 
   late Map<String, dynamic> _data;
@@ -32,43 +32,20 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     super.initState();
     _data      = Map<String, dynamic>.from(widget.data);
     _likeCount = (_data['likes'] as num?)?.toInt() ?? 0;
-    _checkLiked();
   }
 
-  Future<void> _checkLiked() async {
-    final uid = Provider.of<UserProvider>(context, listen: false)
-        .currentUser
-        ?.uid;
-    if (uid == null) return;
-    final liked =
-    await _recipeService.isLikedByUser(_data['id'] as String, uid);
-    if (mounted) setState(() => _isLiked = liked);
-  }
+  void _toggleLike() {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    if (userProvider.currentUser == null) return;
 
-  Future<void> _toggleLike() async {
-    final uid = Provider.of<UserProvider>(context, listen: false)
-        .currentUser
-        ?.uid;
-    if (uid == null || _likeLoading) return;
+    final recipeId = _data['id'] as String;
 
+    // toggleLike is now synchronous (debounced internally).
+    // It returns the new liked state so we can update the count immediately.
+    final nowLiked = userProvider.toggleLike(recipeId);
     setState(() {
-      _likeLoading = true;
-      _isLiked    = !_isLiked;
-      _likeCount  += _isLiked ? 1 : -1;
+      _likeCount = (_likeCount + (nowLiked ? 1 : -1)).clamp(0, 999999);
     });
-
-    try {
-      await _recipeService.toggleLike(_data['id'] as String, uid);
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _isLiked   = !_isLiked;
-          _likeCount += _isLiked ? 1 : -1;
-        });
-      }
-    } finally {
-      if (mounted) setState(() => _likeLoading = false);
-    }
   }
 
   bool get _isOwner {
@@ -180,7 +157,6 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
       return;
     }
 
-    // Build the ingredients list from the recipe data.
     final ingredients = _buildIngredientsForCart();
     if (ingredients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -203,14 +179,11 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     );
   }
 
-  /// Normalises the Firestore ingredients field into a flat list so we can
-  /// support both the current single-map format and a future list format.
   List<Map<String, dynamic>> _buildIngredientsForCart() {
     final raw = _data['ingredients'];
     if (raw == null) return [];
 
     if (raw is Map<String, dynamic>) {
-      // Current format: single ingredient stored as a map.
       final name = (raw['name'] ?? '').toString().trim();
       if (name.isEmpty) return [];
       return [
@@ -223,7 +196,6 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     }
 
     if (raw is List) {
-      // Future-proof: list of ingredient maps.
       final result = <Map<String, dynamic>>[];
       for (final item in raw) {
         if (item is Map<String, dynamic>) {
@@ -271,6 +243,11 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch UserProvider so the heart icon re-renders on any like toggle.
+    final userProvider = context.watch<UserProvider>();
+    final recipeId     = _data['id'] as String;
+    final isLiked      = userProvider.isLiked(recipeId);
+
     final imageUrl   = _data['image']       as String? ?? '';
     final title      = _data['recipeName']  as String? ?? 'Untitled';
     final desc       = _data['description'] as String? ?? '';
@@ -324,23 +301,15 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                   ),
                 ),
               ),
-              // Like button
+              // Like button — driven by UserProvider, no separate loading state needed
               Padding(
                 padding: const EdgeInsets.all(8),
                 child: CircleAvatar(
                   backgroundColor: Colors.black.withOpacity(0.35),
-                  child: _likeLoading
-                      ? const Padding(
-                    padding: EdgeInsets.all(10),
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
-                  )
-                      : IconButton(
+                  child: IconButton(
                     icon: Icon(
-                      _isLiked
-                          ? Icons.favorite
-                          : Icons.favorite_border,
-                      color: _isLiked ? Colors.red : Colors.white,
+                      isLiked ? Icons.favorite : Icons.favorite_border,
+                      color: isLiked ? Colors.red : Colors.white,
                     ),
                     onPressed: _toggleLike,
                   ),
@@ -563,9 +532,9 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                   // Likes + dietary tags + Add to Cart
                   Row(children: [
                     Icon(
-                      _isLiked ? Icons.favorite : Icons.favorite_border,
+                      isLiked ? Icons.favorite : Icons.favorite_border,
                       size: 16,
-                      color: _isLiked ? Colors.red : Colors.grey,
+                      color: isLiked ? Colors.red : Colors.grey,
                     ),
                     const SizedBox(width: 4),
                     Text('$_likeCount likes',
@@ -576,7 +545,6 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                       _tag(dietary.toLowerCase()),
                     ],
                     const Spacer(),
-                    // ── Add to Cart inline button ──────────────────────────
                     ElevatedButton.icon(
                       onPressed: _showAddToCartSheet,
                       icon: const Icon(Icons.add_shopping_cart_rounded,
@@ -807,7 +775,6 @@ class _AddToCartSheetState extends State<_AddToCartSheet> {
   Future<void> _addToCart() async {
     if (_isAdding) return;
 
-    // Create a new list if the user typed a name.
     String? targetId = _selectedListId;
     if (_showNewInput) {
       final name = _newListCtrl.text.trim();
@@ -897,7 +864,6 @@ class _AddToCartSheetState extends State<_AddToCartSheet> {
           ),
           child: Column(
             children: [
-              // ── handle ─────────────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                 child: Column(children: [
@@ -931,7 +897,6 @@ class _AddToCartSheetState extends State<_AddToCartSheet> {
 
               const Divider(height: 20),
 
-              // ── recipe info ────────────────────────────────────────────────
               Padding(
                 padding:
                 const EdgeInsets.symmetric(horizontal: 20),
@@ -1006,7 +971,6 @@ class _AddToCartSheetState extends State<_AddToCartSheet> {
 
               const SizedBox(height: 16),
 
-              // ── list selection ─────────────────────────────────────────────
               Expanded(
                 child: _isLoading
                     ? const Center(
@@ -1024,7 +988,6 @@ class _AddToCartSheetState extends State<_AddToCartSheet> {
                             color: Colors.grey[700])),
                     const SizedBox(height: 10),
 
-                    // Existing lists
                     ..._lists.map((list) {
                       final id   = list['id'] as String;
                       final name = list['name'] as String? ?? '';
@@ -1088,7 +1051,6 @@ class _AddToCartSheetState extends State<_AddToCartSheet> {
                       );
                     }),
 
-                    // Create new list option
                     GestureDetector(
                       onTap: () => setState(
                               () => _showNewInput = true),
@@ -1161,7 +1123,6 @@ class _AddToCartSheetState extends State<_AddToCartSheet> {
                 ),
               ),
 
-              // ── confirm button ─────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                 child: SizedBox(
@@ -1206,7 +1167,7 @@ class _AddToCartSheetState extends State<_AddToCartSheet> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Edit Recipe Bottom Sheet (unchanged from original)
+// Edit Recipe Bottom Sheet
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EditRecipeSheet extends StatefulWidget {

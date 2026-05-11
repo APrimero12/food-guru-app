@@ -87,48 +87,35 @@ class _ProfilePageState extends State<ProfilePage>
   // We only keep the local lists to know which recipes to show in each tab,
   // and update the displayed like count optimistically.
 
-  Future<void> _toggleLike(String recipeId) async {
-    final userProvider =
-    Provider.of<UserProvider>(context, listen: false);
+  void _toggleLike(String recipeId) {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
     if (userProvider.currentUser == null) return;
 
-    final wasLiked = userProvider.isLiked(recipeId);
-
-    // Update displayed count immediately.
-    _updateLikeCount(_myRecipes, recipeId, wasLiked ? -1 : 1);
-    if (!wasLiked) {
-      // Recipe will now be liked — add to liked tab if not already there.
-      final alreadyInList =
-      _likedRecipes.any((r) => r['id'] == recipeId);
+    final nowLiked = userProvider.toggleLike(recipeId);
+    _updateLikeCount(_myRecipes, recipeId, nowLiked ? 1 : -1);
+    if (nowLiked) {
+      final alreadyInList = _likedRecipes.any((r) => r['id'] == recipeId);
       if (!alreadyInList) {
-        final recipe =
-        _myRecipes.firstWhere((r) => r['id'] == recipeId,
-            orElse: () => {});
+        final recipe = _myRecipes.firstWhere(
+              (r) => r['id'] == recipeId,
+          orElse: () => {},
+        );
         if (recipe.isNotEmpty) _likedRecipes.insert(0, recipe);
       }
     } else {
-      // Recipe will be unliked — remove from liked tab.
       _likedRecipes.removeWhere((r) => r['id'] == recipeId);
     }
     setState(() {});
-
-    // Provider handles Firestore and reverts on error.
-    await userProvider.toggleLike(recipeId);
-
-    // If provider reverted, undo our count change too.
-    if (mounted && userProvider.isLiked(recipeId) == wasLiked) {
-      _updateLikeCount(_myRecipes, recipeId, wasLiked ? 1 : -1);
-      setState(() {});
-    }
   }
 
   void _updateLikeCount(
       List<Map<String, dynamic>> list, String recipeId, int delta) {
     final idx = list.indexWhere((r) => r['id'] == recipeId);
     if (idx == -1) return;
+    final current = ((list[idx]['likes'] as num?) ?? 0).toInt();
     list[idx] = {
       ...list[idx],
-      'likes': ((list[idx]['likes'] as num?) ?? 0).toInt() + delta,
+      'likes': (current + delta).clamp(0, 999999),
     };
   }
 

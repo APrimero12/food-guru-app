@@ -188,36 +188,24 @@ class _ExploreContentState extends State<ExploreContent> {
   // Like state now lives in UserProvider — just update the local count for
   // immediate feedback on the card, then let the provider handle Firestore.
 
-  Future<void> _toggleLike(String recipeId) async {
-    final userProvider =
-    Provider.of<UserProvider>(context, listen: false);
+  void _toggleLike(String recipeId) {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
     if (userProvider.currentUser == null) return;
 
-    final wasLiked = userProvider.isLiked(recipeId);
-
-    // Update the displayed like count on the card immediately.
-    _updateCount(_recipes, recipeId, wasLiked ? -1 : 1);
-    _updateCount(_filteredRecipes, recipeId, wasLiked ? -1 : 1);
+    final nowLiked = userProvider.toggleLike(recipeId);
+    _updateCount(_recipes, recipeId, nowLiked ? 1 : -1);
+    _updateCount(_filteredRecipes, recipeId, nowLiked ? 1 : -1);
     setState(() {});
-
-    // Provider handles Firestore + reverts on error.
-    await userProvider.toggleLike(recipeId);
-
-    // If the provider reverted (error), revert the count too.
-    if (mounted && userProvider.isLiked(recipeId) == wasLiked) {
-      _updateCount(_recipes, recipeId, wasLiked ? 1 : -1);
-      _updateCount(_filteredRecipes, recipeId, wasLiked ? 1 : -1);
-      setState(() {});
-    }
   }
 
   void _updateCount(
       List<Map<String, dynamic>> list, String id, int delta) {
     final idx = list.indexWhere((r) => r['id'] == id);
     if (idx == -1) return;
+    final current = ((list[idx]['likes'] as num?) ?? 0).toInt();
     list[idx] = {
       ...list[idx],
-      'likes': ((list[idx]['likes'] as num?) ?? 0).toInt() + delta,
+      'likes': (current + delta).clamp(0, 999999),
     };
   }
 

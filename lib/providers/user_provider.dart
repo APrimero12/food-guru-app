@@ -1,4 +1,5 @@
 // lib/providers/user_provider.dart
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:appdevproject/models/user_model.dart';
@@ -14,6 +15,15 @@ class UserProvider extends ChangeNotifier {
 
   // Single source of truth for which recipes the current user has liked.
   final Set<String> _likedRecipeIds = {};
+
+  // ── debounce: one timer + pending-state map per recipe ───────────────────
+  // When the user spam-taps, we update the UI instantly every tap but only
+  // fire a Firestore write 3 seconds after the *last* tap on that recipe.
+  final Map<String, Timer>  _debounceTimers   = {};
+  // Tracks whether the PENDING Firestore write will be a like or unlike.
+  final Map<String, bool>   _pendingLiked     = {};
+  // The like state that was committed to Firestore last (used for revert).
+  final Map<String, bool>   _committedLiked   = {};
 
   // ── getters ───────────────────────────────────────────────────────────────
 
@@ -32,7 +42,6 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Fetch user profile and liked IDs in parallel.
       final results = await Future.wait([
         _userService.getUser(uid),
         _fetchLikedIds(uid),
@@ -43,6 +52,11 @@ class UserProvider extends ChangeNotifier {
       _likedRecipeIds
         ..clear()
         ..addAll(liked);
+
+      // Seed committed state so the debouncer knows the real starting point.
+      for (final id in liked) {
+        _committedLiked[id] = true;
+      }
     } catch (e) {
       _error = 'Failed to load user data: $e';
       debugPrint(_error);
@@ -52,36 +66,71 @@ class UserProvider extends ChangeNotifier {
     }
   }
 
-  // ── optimistic like toggle ────────────────────────────────────────────────
+  // ── debounced like toggle ─────────────────────────────────────────────────
+  //
+  // UI updates immediately on every call.
+  // A Firestore write is scheduled 3 s after the last call for that recipe.
+  // If the user taps again before the timer fires, the timer resets.
+  //
+  // Returns the NEW local liked state so callers can update their own count.
 
-  /// Optimistically updates the local liked set, calls Firestore, and reverts
-  /// on failure. All pages that consume [isLiked] / [likedRecipeIds] will
-  /// rebuild automatically via [notifyListeners].
-  Future<void> toggleLike(String recipeId) async {
+  bool toggleLike(String recipeId) {
     final uid = _currentUser?.uid;
-    if (uid == null) return;
+    if (uid == null) return isLiked(recipeId);
 
-    final wasLiked = _likedRecipeIds.contains(recipeId);
-
-    // Optimistic update.
-    if (wasLiked) {
-      _likedRecipeIds.remove(recipeId);
-    } else {
+    // Flip local state immediately.
+    final nowLiked = !isLiked(recipeId);
+    if (nowLiked) {
       _likedRecipeIds.add(recipeId);
+    } else {
+      _likedRecipeIds.remove(recipeId);
     }
+    _pendingLiked[recipeId] = nowLiked;
     notifyListeners();
+
+    // Cancel any existing timer for this recipe and start a fresh one.
+    _debounceTimers[recipeId]?.cancel();
+    _debounceTimers[recipeId] = Timer(const Duration(seconds: 3), () {
+      _flushLike(recipeId, uid);
+    });
+
+    return nowLiked;
+  }
+
+  /// Actually writes to Firestore once the debounce timer fires.
+  Future<void> _flushLike(String recipeId, String uid) async {
+    final desired  = _pendingLiked[recipeId];
+    final previous = _committedLiked[recipeId] ?? false;
+    if (desired == null || desired == previous) return; // nothing changed
 
     try {
       await RecipeService().toggleLike(recipeId, uid);
+      _committedLiked[recipeId] = desired;
     } catch (e) {
-      // Revert on failure.
-      if (wasLiked) {
+      debugPrint('toggleLike flush failed for $recipeId: $e');
+      // Revert local state to what Firestore has.
+      if (previous) {
         _likedRecipeIds.add(recipeId);
       } else {
         _likedRecipeIds.remove(recipeId);
       }
+      _pendingLiked[recipeId] = previous;
       notifyListeners();
-      debugPrint('toggleLike failed: $e');
+    } finally {
+      _debounceTimers.remove(recipeId);
+    }
+  }
+
+  // ── flush all pending likes on logout / dispose ───────────────────────────
+
+  Future<void> flushAllPending() async {
+    final uid = _currentUser?.uid;
+    if (uid == null) return;
+    // Cancel timers and write immediately.
+    for (final recipeId in List.of(_debounceTimers.keys)) {
+      _debounceTimers[recipeId]?.cancel();
+      _debounceTimers.remove(recipeId);
+      await _flushLike(recipeId, uid);
     }
   }
 
@@ -93,10 +142,22 @@ class UserProvider extends ChangeNotifier {
   }
 
   void clearUser() {
+    // Flush pending likes before clearing so we don't lose data on sign-out.
+    flushAllPending();
     _currentUser = null;
     _likedRecipeIds.clear();
+    _pendingLiked.clear();
+    _committedLiked.clear();
+    _debounceTimers.forEach((_, t) => t.cancel());
+    _debounceTimers.clear();
     _error = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _debounceTimers.forEach((_, t) => t.cancel());
+    super.dispose();
   }
 
   // ── private ───────────────────────────────────────────────────────────────
