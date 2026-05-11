@@ -1,13 +1,15 @@
+// lib/views/profile/myprofile_page.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:appdevproject/models/user_model.dart';
-import 'package:appdevproject/services/cloudinary_service.dart';
+import 'package:appdevproject/providers/user_provider.dart';
 import 'package:appdevproject/services/follow_service.dart';
 import 'package:appdevproject/services/recipe_services.dart';
 import 'package:appdevproject/views/recipe/recipe_detail_page.dart';
 import '../widgets.dart';
 
 class ProfilePage extends StatefulWidget {
-  final UserModel user;
+  final UserModel    user;
   final VoidCallback? onSettingsTapped;
   final VoidCallback? onCommunityTapped;
 
@@ -26,14 +28,13 @@ class _ProfilePageState extends State<ProfilePage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final RecipeService _recipeService = RecipeService();
-  final FollowService  _followService  = FollowService();
+  final FollowService _followService = FollowService();
 
   int _followingCount = 0;
   int _followersCount = 0;
 
   List<Map<String, dynamic>> _myRecipes    = [];
   List<Map<String, dynamic>> _likedRecipes = [];
-  final Set<String> _likedIds = {};
 
   bool _isLoading = true;
 
@@ -47,7 +48,6 @@ class _ProfilePageState extends State<ProfilePage>
   @override
   void didUpdateWidget(ProfilePage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Reload if the logged-in user switches.
     if (oldWidget.user.uid != widget.user.uid) _loadData();
   }
 
@@ -74,10 +74,7 @@ class _ProfilePageState extends State<ProfilePage>
           _likedRecipes   = results[1] as List<Map<String, dynamic>>;
           _followingCount = results[2] as int;
           _followersCount = results[3] as int;
-          _likedIds
-            ..clear()
-            ..addAll(_likedRecipes.map((r) => r['id'] as String));
-          _isLoading = false;
+          _isLoading      = false;
         });
       }
     } catch (_) {
@@ -86,35 +83,42 @@ class _ProfilePageState extends State<ProfilePage>
   }
 
   // ── like toggle ───────────────────────────────────────────────────────────
+  // UserProvider is the single source of truth for the filled/unfilled heart.
+  // We only keep the local lists to know which recipes to show in each tab,
+  // and update the displayed like count optimistically.
 
   Future<void> _toggleLike(String recipeId) async {
-    setState(() {
-      if (_likedIds.contains(recipeId)) {
-        _likedIds.remove(recipeId);
-        _likedRecipes.removeWhere((r) => r['id'] == recipeId);
-        _updateLikeCount(_myRecipes, recipeId, -1);
-      } else {
-        _likedIds.add(recipeId);
-        _updateLikeCount(_myRecipes, recipeId, 1);
-      }
-    });
+    final userProvider =
+    Provider.of<UserProvider>(context, listen: false);
+    if (userProvider.currentUser == null) return;
 
-    try {
-      await _recipeService.toggleLike(recipeId, widget.user.uid);
-    } catch (_) {
-      // Revert on failure.
-      if (mounted) {
-        setState(() {
-          if (_likedIds.contains(recipeId)) {
-            _likedIds.remove(recipeId);
-            _likedRecipes.removeWhere((r) => r['id'] == recipeId);
-            _updateLikeCount(_myRecipes, recipeId, -1);
-          } else {
-            _likedIds.add(recipeId);
-            _updateLikeCount(_myRecipes, recipeId, 1);
-          }
-        });
+    final wasLiked = userProvider.isLiked(recipeId);
+
+    // Update displayed count immediately.
+    _updateLikeCount(_myRecipes, recipeId, wasLiked ? -1 : 1);
+    if (!wasLiked) {
+      // Recipe will now be liked — add to liked tab if not already there.
+      final alreadyInList =
+      _likedRecipes.any((r) => r['id'] == recipeId);
+      if (!alreadyInList) {
+        final recipe =
+        _myRecipes.firstWhere((r) => r['id'] == recipeId,
+            orElse: () => {});
+        if (recipe.isNotEmpty) _likedRecipes.insert(0, recipe);
       }
+    } else {
+      // Recipe will be unliked — remove from liked tab.
+      _likedRecipes.removeWhere((r) => r['id'] == recipeId);
+    }
+    setState(() {});
+
+    // Provider handles Firestore and reverts on error.
+    await userProvider.toggleLike(recipeId);
+
+    // If provider reverted, undo our count change too.
+    if (mounted && userProvider.isLiked(recipeId) == wasLiked) {
+      _updateLikeCount(_myRecipes, recipeId, wasLiked ? 1 : -1);
+      setState(() {});
     }
   }
 
@@ -156,6 +160,9 @@ class _ProfilePageState extends State<ProfilePage>
 
   @override
   Widget build(BuildContext context) {
+    // Watch provider so hearts re-render when toggled from other pages.
+    final userProvider = context.watch<UserProvider>();
+
     return NestedScrollView(
       headerSliverBuilder: (context, innerBoxIsScrolled) => [
         SliverToBoxAdapter(child: _buildHeader()),
@@ -190,12 +197,14 @@ class _ProfilePageState extends State<ProfilePage>
         children: [
           _buildGrid(
             _myRecipes,
+            userProvider: userProvider,
             emptyIcon: Icons.restaurant_menu,
             emptyTitle: 'No recipes yet',
             emptySubtitle: 'Your published recipes will appear here.',
           ),
           _buildGrid(
             _likedRecipes,
+            userProvider: userProvider,
             emptyIcon: Icons.favorite_border,
             emptyTitle: 'No liked recipes',
             emptySubtitle: 'Recipes you like will appear here.',
@@ -213,7 +222,6 @@ class _ProfilePageState extends State<ProfilePage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Gradient banner
         Container(
           height: 120,
           decoration: const BoxDecoration(
@@ -225,7 +233,6 @@ class _ProfilePageState extends State<ProfilePage>
           ),
         ),
 
-        // Profile card
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Transform.translate(
@@ -239,7 +246,6 @@ class _ProfilePageState extends State<ProfilePage>
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
-                    // Avatar
                     Container(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
@@ -274,7 +280,6 @@ class _ProfilePageState extends State<ProfilePage>
                     ),
                     const SizedBox(height: 12),
 
-                    // Name
                     Text(
                       user.name ?? 'Guest User',
                       style: const TextStyle(
@@ -285,12 +290,11 @@ class _ProfilePageState extends State<ProfilePage>
                       user.username != null
                           ? '@${user.username}'
                           : '@unknown',
-                      style: TextStyle(
-                          fontSize: 14, color: Colors.grey[500]),
+                      style:
+                      TextStyle(fontSize: 14, color: Colors.grey[500]),
                       textAlign: TextAlign.center,
                     ),
 
-                    // Bio
                     if (user.bio != null && user.bio!.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
@@ -305,37 +309,31 @@ class _ProfilePageState extends State<ProfilePage>
 
                     const SizedBox(height: 16),
 
-                    // Stats row
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        _statItem(
-                            Icons.restaurant_menu,
-                            Colors.orange,
-                            '${_myRecipes.length}',
-                            'Recipes'),
+                        _statItem(Icons.restaurant_menu, Colors.orange,
+                            '${_myRecipes.length}', 'Recipes'),
                         _divider(),
-                        _statItem(
-                            Icons.favorite, Colors.red,
+                        _statItem(Icons.favorite, Colors.red,
                             '${_likedRecipes.length}', 'Liked'),
                         _divider(),
                         GestureDetector(
                           onTap: widget.onCommunityTapped,
-                          child: _statItem(
-                              Icons.people, Colors.blue, '$_followingCount', 'Following'),
+                          child: _statItem(Icons.people, Colors.blue,
+                              '$_followingCount', 'Following'),
                         ),
                         _divider(),
                         GestureDetector(
                           onTap: widget.onCommunityTapped,
-                          child: _statItem(
-                              Icons.people, Colors.green, '$_followersCount', 'Followers'),
+                          child: _statItem(Icons.people, Colors.green,
+                              '$_followersCount', 'Followers'),
                         ),
                       ],
                     ),
 
                     const SizedBox(height: 16),
 
-                    // Action buttons
                     Wrap(
                       spacing: 12,
                       runSpacing: 8,
@@ -408,6 +406,7 @@ class _ProfilePageState extends State<ProfilePage>
 
   Widget _buildGrid(
       List<Map<String, dynamic>> recipes, {
+        required UserProvider userProvider,
         required IconData emptyIcon,
         required String emptyTitle,
         required String emptySubtitle,
@@ -470,7 +469,8 @@ class _ProfilePageState extends State<ProfilePage>
             servings: '${(data['servings'] as num?)?.toInt() ?? 0}',
             tags:    _buildTags(data),
             likes:   '${(data['likes'] as num?)?.toInt() ?? 0}',
-            isLiked: _likedIds.contains(recipeId),
+            // ← Driven by UserProvider
+            isLiked: userProvider.isLiked(recipeId),
             onLikeTapped: () => _toggleLike(recipeId),
             onTapped: () => Navigator.push(
               context,
@@ -501,10 +501,7 @@ class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      color: Colors.white,
-      child: tabBar,
-    );
+    return Container(color: Colors.white, child: tabBar);
   }
 
   @override

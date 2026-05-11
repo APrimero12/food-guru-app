@@ -1,3 +1,4 @@
+// lib/views/explore/explore_content.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -18,8 +19,8 @@ class ExploreContent extends StatefulWidget {
 }
 
 class _ExploreContentState extends State<ExploreContent> {
-  final RecipeService    _recipeService    = RecipeService();
-  final ScrollController _scrollController = ScrollController();
+  final RecipeService       _recipeService    = RecipeService();
+  final ScrollController    _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
 
   // ── paginated "all recipes" state ─────────────────────────────────────────
@@ -37,17 +38,12 @@ class _ExploreContentState extends State<ExploreContent> {
   bool _isFiltering     = false;
   bool _isFilterLoading = false;
 
-  // ── like state ────────────────────────────────────────────────────────────
-  final Set<String> _likedIds = {};
-  bool _likesLoaded = false;
-
   bool get _activeFilter =>
       _searchQuery.isNotEmpty || _selectedCategory != null;
 
   @override
   void initState() {
     super.initState();
-    _loadLikedIds();
     _fetchFirstPage();
     _scrollController.addListener(_onScroll);
     _searchController.addListener(_onSearchChanged);
@@ -94,7 +90,6 @@ class _ExploreContentState extends State<ExploreContent> {
     });
   }
 
-  /// Runs whenever the search query or category changes.
   Future<void> _applyFilter() async {
     if (!_activeFilter) {
       setState(() {
@@ -113,15 +108,12 @@ class _ExploreContentState extends State<ExploreContent> {
       List<Map<String, dynamic>> results;
 
       if (_selectedCategory != null) {
-        // Fetch by category from Firestore, then apply text filter locally.
         results = await _recipeService
             .getRecipesByCategory(_selectedCategory!);
       } else {
-        // No category: search across all loaded recipes + a fresh server query.
         results = await _recipeService.getAllRecipes(limit: 100);
       }
 
-      // Apply text filter client-side.
       if (_searchQuery.isNotEmpty) {
         results = results.where((r) {
           final name = (r['recipeName'] as String? ?? '').toLowerCase();
@@ -152,8 +144,7 @@ class _ExploreContentState extends State<ExploreContent> {
       _hasMore = true;
     });
     try {
-      final result =
-      await _recipeService.getRecipesPage(limit: _pageSize);
+      final result = await _recipeService.getRecipesPage(limit: _pageSize);
       if (mounted) {
         setState(() {
           _recipes.addAll(result.recipes);
@@ -193,65 +184,30 @@ class _ExploreContentState extends State<ExploreContent> {
     }
   }
 
-  // ── likes ─────────────────────────────────────────────────────────────────
-
-  Future<void> _loadLikedIds() async {
-    final user =
-        Provider.of<UserProvider>(context, listen: false).currentUser;
-    if (user == null) {
-      setState(() => _likesLoaded = true);
-      return;
-    }
-    try {
-      final liked = await _recipeService.getLikedRecipes(user.uid);
-      if (mounted) {
-        setState(() {
-          _likedIds
-            ..clear()
-            ..addAll(liked.map((r) => r['id'] as String));
-          _likesLoaded = true;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _likesLoaded = true);
-    }
-  }
+  // ── like toggle ───────────────────────────────────────────────────────────
+  // Like state now lives in UserProvider — just update the local count for
+  // immediate feedback on the card, then let the provider handle Firestore.
 
   Future<void> _toggleLike(String recipeId) async {
-    final user =
-        Provider.of<UserProvider>(context, listen: false).currentUser;
-    if (user == null) return;
+    final userProvider =
+    Provider.of<UserProvider>(context, listen: false);
+    if (userProvider.currentUser == null) return;
 
-    setState(() {
-      final liked = _likedIds.contains(recipeId);
-      if (liked) {
-        _likedIds.remove(recipeId);
-        _updateCount(_recipes, recipeId, -1);
-        _updateCount(_filteredRecipes, recipeId, -1);
-      } else {
-        _likedIds.add(recipeId);
-        _updateCount(_recipes, recipeId, 1);
-        _updateCount(_filteredRecipes, recipeId, 1);
-      }
-    });
+    final wasLiked = userProvider.isLiked(recipeId);
 
-    try {
-      await _recipeService.toggleLike(recipeId, user.uid);
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          final liked = _likedIds.contains(recipeId);
-          if (liked) {
-            _likedIds.remove(recipeId);
-            _updateCount(_recipes, recipeId, -1);
-            _updateCount(_filteredRecipes, recipeId, -1);
-          } else {
-            _likedIds.add(recipeId);
-            _updateCount(_recipes, recipeId, 1);
-            _updateCount(_filteredRecipes, recipeId, 1);
-          }
-        });
-      }
+    // Update the displayed like count on the card immediately.
+    _updateCount(_recipes, recipeId, wasLiked ? -1 : 1);
+    _updateCount(_filteredRecipes, recipeId, wasLiked ? -1 : 1);
+    setState(() {});
+
+    // Provider handles Firestore + reverts on error.
+    await userProvider.toggleLike(recipeId);
+
+    // If the provider reverted (error), revert the count too.
+    if (mounted && userProvider.isLiked(recipeId) == wasLiked) {
+      _updateCount(_recipes, recipeId, wasLiked ? 1 : -1);
+      _updateCount(_filteredRecipes, recipeId, wasLiked ? 1 : -1);
+      setState(() {});
     }
   }
 
@@ -293,7 +249,7 @@ class _ExploreContentState extends State<ExploreContent> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isInitialLoading || !_likesLoaded) {
+    if (_isInitialLoading) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(64),
@@ -322,17 +278,20 @@ class _ExploreContentState extends State<ExploreContent> {
       );
     }
 
-    final displayList = _activeFilter ? _filteredRecipes : _recipes;
+    final displayList    = _activeFilter ? _filteredRecipes : _recipes;
     final screenWidth    = MediaQuery.of(context).size.width;
     final crossAxisCount =
     screenWidth > 1100 ? 3 : (screenWidth > 700 ? 2 : 1);
     final cardRatio =
     screenWidth > 1100 ? 0.68 : (screenWidth > 700 ? 0.72 : 0.90);
 
+    // Watch UserProvider so cards re-render when like state changes.
+    final userProvider = context.watch<UserProvider>();
+
     return CustomScrollView(
       controller: _scrollController,
       slivers: [
-        // ── header ────────────────────────────────────────────────────────────
+        // ── header ───────────────────────────────────────────────────────────
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -349,7 +308,7 @@ class _ExploreContentState extends State<ExploreContent> {
                 ),
                 const SizedBox(height: 16),
 
-                // ── search bar ───────────────────────────────────────────────
+                // search bar
                 TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
@@ -362,9 +321,7 @@ class _ExploreContentState extends State<ExploreContent> {
                         ? IconButton(
                       icon: const Icon(Icons.clear,
                           color: Colors.grey, size: 18),
-                      onPressed: () {
-                        _searchController.clear();
-                      },
+                      onPressed: () => _searchController.clear(),
                     )
                         : null,
                     filled: true,
@@ -379,13 +336,12 @@ class _ExploreContentState extends State<ExploreContent> {
                 ),
                 const SizedBox(height: 12),
 
-                // ── category chips ───────────────────────────────────────────
+                // category chips
                 SizedBox(
                   height: 36,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     children: [
-                      // "All" chip
                       _categoryChip(null, 'All'),
                       ...Category.values.map(
                               (c) => _categoryChip(c, c.name)),
@@ -393,7 +349,6 @@ class _ExploreContentState extends State<ExploreContent> {
                   ),
                 ),
 
-                // Active filter indicator
                 if (_activeFilter) ...[
                   const SizedBox(height: 10),
                   Row(children: [
@@ -425,24 +380,23 @@ class _ExploreContentState extends State<ExploreContent> {
           ),
         ),
 
-        // ── loading spinner for filter ────────────────────────────────────────
         if (_isFilterLoading)
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.all(48),
-              child:
-              Center(child: CircularProgressIndicator(color: Colors.orange)),
+              child: Center(
+                  child:
+                  CircularProgressIndicator(color: Colors.orange)),
             ),
           )
-
-        // ── empty filter result ───────────────────────────────────────────────
         else if (_activeFilter && _filteredRecipes.isEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(48),
               child: Column(
                 children: [
-                  Icon(Icons.search_off, size: 56, color: Colors.grey[300]),
+                  Icon(Icons.search_off,
+                      size: 56, color: Colors.grey[300]),
                   const SizedBox(height: 16),
                   const Text('No recipes found',
                       style: TextStyle(
@@ -455,8 +409,6 @@ class _ExploreContentState extends State<ExploreContent> {
               ),
             ),
           )
-
-        // ── empty all-recipes state ───────────────────────────────────────────
         else if (displayList.isEmpty)
             SliverToBoxAdapter(
               child: Padding(
@@ -471,14 +423,12 @@ class _ExploreContentState extends State<ExploreContent> {
                             fontSize: 20, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     Text('Be the first to share one.',
-                        style: TextStyle(
-                            fontSize: 14, color: Colors.grey[500])),
+                        style:
+                        TextStyle(fontSize: 14, color: Colors.grey[500])),
                   ],
                 ),
               ),
             )
-
-          // ── recipe grid ───────────────────────────────────────────────────────
           else ...[
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -508,7 +458,8 @@ class _ExploreContentState extends State<ExploreContent> {
                         '${(data['servings'] as num?)?.toInt() ?? 0}',
                         tags:    _buildTags(data),
                         likes:   '${(data['likes'] as num?)?.toInt() ?? 0}',
-                        isLiked: _likedIds.contains(recipeId),
+                        // ← Now driven by UserProvider, consistent across all pages
+                        isLiked: userProvider.isLiked(recipeId),
                         onLikeTapped: () => _toggleLike(recipeId),
                         onTapped: () => Navigator.push(
                           context,
@@ -523,7 +474,6 @@ class _ExploreContentState extends State<ExploreContent> {
                 ),
               ),
 
-              // ── load-more / end-of-feed ───────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
@@ -544,8 +494,6 @@ class _ExploreContentState extends State<ExploreContent> {
     );
   }
 
-  // ── category chip widget ──────────────────────────────────────────────────
-
   Widget _categoryChip(Category? category, String label) {
     final isSelected = _selectedCategory == category;
     return Padding(
@@ -560,7 +508,8 @@ class _ExploreContentState extends State<ExploreContent> {
             color: isSelected ? Colors.orange : Colors.grey[100],
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: isSelected ? Colors.orange : Colors.grey.shade300,
+              color:
+              isSelected ? Colors.orange : Colors.grey.shade300,
             ),
           ),
           child: Text(
