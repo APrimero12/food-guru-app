@@ -9,7 +9,7 @@ import 'package:appdevproject/views/recipe/recipe_detail_page.dart';
 import '../widgets.dart';
 
 class ProfilePage extends StatefulWidget {
-  final UserModel    user;
+  final UserModel user;
   final VoidCallback? onSettingsTapped;
   final VoidCallback? onCommunityTapped;
 
@@ -33,7 +33,7 @@ class _ProfilePageState extends State<ProfilePage>
   int _followingCount = 0;
   int _followersCount = 0;
 
-  List<Map<String, dynamic>> _myRecipes    = [];
+  List<Map<String, dynamic>> _myRecipes = [];
   List<Map<String, dynamic>> _likedRecipes = [];
 
   bool _isLoading = true;
@@ -70,11 +70,11 @@ class _ProfilePageState extends State<ProfilePage>
       ]);
       if (mounted) {
         setState(() {
-          _myRecipes      = results[0] as List<Map<String, dynamic>>;
-          _likedRecipes   = results[1] as List<Map<String, dynamic>>;
+          _myRecipes = results[0] as List<Map<String, dynamic>>;
+          _likedRecipes = results[1] as List<Map<String, dynamic>>;
           _followingCount = results[2] as int;
           _followersCount = results[3] as int;
-          _isLoading      = false;
+          _isLoading = false;
         });
       }
     } catch (_) {
@@ -83,9 +83,6 @@ class _ProfilePageState extends State<ProfilePage>
   }
 
   // ── like toggle ───────────────────────────────────────────────────────────
-  // UserProvider is the single source of truth for the filled/unfilled heart.
-  // We only keep the local lists to know which recipes to show in each tab,
-  // and update the displayed like count optimistically.
 
   void _toggleLike(String recipeId) {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
@@ -93,6 +90,7 @@ class _ProfilePageState extends State<ProfilePage>
 
     final nowLiked = userProvider.toggleLike(recipeId);
     _updateLikeCount(_myRecipes, recipeId, nowLiked ? 1 : -1);
+
     if (nowLiked) {
       final alreadyInList = _likedRecipes.any((r) => r['id'] == recipeId);
       if (!alreadyInList) {
@@ -131,9 +129,9 @@ class _ProfilePageState extends State<ProfilePage>
   }
 
   List<String> _buildTags(Map<String, dynamic> data) {
-    final tags        = <String>[];
+    final tags = <String>[];
     final restriction = data['dietaryRestrictions'] as String?;
-    final category    = data['category'] as String?;
+    final category = data['category'] as String?;
     if (restriction != null && restriction.isNotEmpty) {
       tags.add(restriction.toLowerCase());
     }
@@ -147,7 +145,6 @@ class _ProfilePageState extends State<ProfilePage>
 
   @override
   Widget build(BuildContext context) {
-    // Watch provider so hearts re-render when toggled from other pages.
     final userProvider = context.watch<UserProvider>();
 
     return NestedScrollView(
@@ -177,8 +174,7 @@ class _ProfilePageState extends State<ProfilePage>
         ),
       ],
       body: _isLoading
-          ? const Center(
-          child: CircularProgressIndicator(color: Colors.orange))
+          ? const Center(child: CircularProgressIndicator(color: Colors.orange))
           : TabBarView(
         controller: _tabController,
         children: [
@@ -219,7 +215,6 @@ class _ProfilePageState extends State<ProfilePage>
             ),
           ),
         ),
-
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Transform.translate(
@@ -266,7 +261,6 @@ class _ProfilePageState extends State<ProfilePage>
                       ),
                     ),
                     const SizedBox(height: 12),
-
                     Text(
                       user.name ?? 'Guest User',
                       style: const TextStyle(
@@ -274,14 +268,10 @@ class _ProfilePageState extends State<ProfilePage>
                       textAlign: TextAlign.center,
                     ),
                     Text(
-                      user.username != null
-                          ? '@${user.username}'
-                          : '@unknown',
-                      style:
-                      TextStyle(fontSize: 14, color: Colors.grey[500]),
+                      user.username != null ? '@${user.username}' : '@unknown',
+                      style: TextStyle(fontSize: 14, color: Colors.grey[500]),
                       textAlign: TextAlign.center,
                     ),
-
                     if (user.bio != null && user.bio!.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Text(
@@ -293,9 +283,7 @@ class _ProfilePageState extends State<ProfilePage>
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
-
                     const SizedBox(height: 16),
-
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
@@ -318,9 +306,7 @@ class _ProfilePageState extends State<ProfilePage>
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 16),
-
                     Wrap(
                       spacing: 12,
                       runSpacing: 8,
@@ -329,8 +315,7 @@ class _ProfilePageState extends State<ProfilePage>
                         ElevatedButton.icon(
                           onPressed: widget.onCommunityTapped,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                            Theme.of(context).primaryColor,
+                            backgroundColor: Theme.of(context).primaryColor,
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 20, vertical: 10),
                             shape: RoundedRectangleBorder(
@@ -367,18 +352,15 @@ class _ProfilePageState extends State<ProfilePage>
     );
   }
 
-  Widget _statItem(
-      IconData icon, Color color, String count, String label) {
+  Widget _statItem(IconData icon, Color color, String count, String label) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 18, color: color),
         const SizedBox(height: 4),
         Text(count,
-            style: const TextStyle(
-                fontWeight: FontWeight.bold, fontSize: 16)),
-        Text(label,
-            style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[500])),
       ],
     );
   }
@@ -398,65 +380,69 @@ class _ProfilePageState extends State<ProfilePage>
         required String emptyTitle,
         required String emptySubtitle,
       }) {
-    if (recipes.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(48),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(emptyIcon, size: 64, color: Colors.grey[200]),
-              const SizedBox(height: 16),
-              Text(emptyTitle,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text(emptySubtitle,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 13, color: Colors.grey[500])),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final screenWidth    = MediaQuery.of(context).size.width;
-    final crossAxisCount =
-    screenWidth > 1100 ? 3 : (screenWidth > 700 ? 2 : 1);
-    final cardRatio =
-    screenWidth > 1100 ? 0.68 : (screenWidth > 700 ? 0.72 : 0.90);
-
     return RefreshIndicator(
       color: Colors.orange,
       onRefresh: _loadData,
-      child: GridView.builder(
+      child: recipes.isEmpty
+          ? LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Container(
+            // Forces the container to be full width and at least full height
+            width: double.infinity,
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                Icon(emptyIcon, size: 64, color: Colors.grey[200]),
+                const SizedBox(height: 16),
+                Text(emptyTitle,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text(emptySubtitle,
+                    textAlign: TextAlign.center,
+                    style:
+                    TextStyle(fontSize: 13, color: Colors.grey[500])),
+              ],
+            ),
+          ),
+        ),
+      )
+          : GridView.builder(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount:   crossAxisCount,
-          childAspectRatio: cardRatio,
-          mainAxisSpacing:  16,
+          crossAxisCount: MediaQuery.of(context).size.width > 1100
+              ? 3
+              : (MediaQuery.of(context).size.width > 700 ? 2 : 1),
+          childAspectRatio: MediaQuery.of(context).size.width > 1100
+              ? 0.68
+              : (MediaQuery.of(context).size.width > 700 ? 0.72 : 0.90),
+          mainAxisSpacing: 16,
           crossAxisSpacing: 16,
         ),
         itemCount: recipes.length,
         itemBuilder: (context, index) {
-          final data     = recipes[index];
+          final data = recipes[index];
           final recipeId = data['id'] as String;
 
           return RecipeCard(
-            imageUrl:    data['image']       as String? ?? '',
-            userName:    data['userName']    as String? ?? 'Anonymous',
-            userAvatar:  data['userAvatar']  as String? ?? '',
-            title:       data['recipeName']  as String? ?? 'Untitled',
+            imageUrl: data['image'] as String? ?? '',
+            userName: data['userName'] as String? ?? 'Anonymous',
+            userAvatar: data['userAvatar'] as String? ?? '',
+            title: data['recipeName'] as String? ?? 'Untitled',
             description: data['description'] as String? ?? '',
             time: _formatTime(
               (data['prepTime'] as num?)?.toInt() ?? 0,
               (data['cookTime'] as num?)?.toInt() ?? 0,
             ),
             servings: '${(data['servings'] as num?)?.toInt() ?? 0}',
-            tags:    _buildTags(data),
-            likes:   '${(data['likes'] as num?)?.toInt() ?? 0}',
-            // ← Driven by UserProvider
+            tags: _buildTags(data),
+            likes: '${(data['likes'] as num?)?.toInt() ?? 0}',
             isLiked: userProvider.isLiked(recipeId),
             onLikeTapped: () => _toggleLike(recipeId),
             onTapped: () => Navigator.push(
