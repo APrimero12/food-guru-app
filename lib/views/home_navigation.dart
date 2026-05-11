@@ -11,6 +11,9 @@ import 'package:appdevproject/views/recipe/add_recipe.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:appdevproject/services/message_service.dart';
+
 import 'explore/explore_content.dart';
 import 'messages/dms_page.dart';
 
@@ -30,6 +33,7 @@ class MyExplorePage extends StatefulWidget {
 class _MyExplorePageState extends State<MyExplorePage> {
   int _bottomNavIndex = 0;
   AppView _currentAppView = AppView.homeTabs;
+  final MessageService _messageService = MessageService();
 
   // ── navigation helpers ───────────────────────────────────────────────────
 
@@ -73,34 +77,52 @@ class _MyExplorePageState extends State<MyExplorePage> {
       case AppView.homeTabs:
         titleText = 'FoodGuru';
         appBarActions = [
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.notifications_none,
-                    color: Colors.black),
-                onPressed: () =>
-                    setState(() => _currentAppView = AppView.dmsPage),
-              ),
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(10),
+          StreamBuilder<QuerySnapshot>(
+            stream: Provider.of<UserProvider>(context, listen: false).currentUser == null
+                ? const Stream.empty()
+                : MessageService().conversationsStream(
+                Provider.of<UserProvider>(context, listen: false).currentUser!.uid),
+            builder: (context, snap) {
+              final currentUid =
+                  Provider.of<UserProvider>(context, listen: false).currentUser?.uid ?? '';
+
+              int totalUnread = 0;
+              for (final doc in snap.data?.docs ?? []) {
+                final data = doc.data() as Map<String, dynamic>;
+                totalUnread += (data['unread_$currentUid'] as num?)?.toInt() ?? 0;
+              }
+
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_none, color: Colors.black),
+                    onPressed: () =>
+                        setState(() => _currentAppView = AppView.dmsPage),
                   ),
-                  constraints:
-                  const BoxConstraints(minWidth: 16, minHeight: 16),
-                  child: const Text(
-                    '2',
-                    style: TextStyle(color: Colors.white, fontSize: 10),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-            ],
+                  if (totalUnread > 0)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints:
+                        const BoxConstraints(minWidth: 16, minHeight: 16),
+                        child: Text(
+                          totalUnread > 99 ? '99+' : '$totalUnread',
+                          style:
+                          const TextStyle(color: Colors.white, fontSize: 10),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ];
         break;
