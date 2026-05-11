@@ -1,7 +1,9 @@
+// lib/views/recipe/recipe_detail_page.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:appdevproject/providers/user_provider.dart';
 import 'package:appdevproject/services/recipe_services.dart';
+import 'package:appdevproject/services/cart_service.dart';
 import 'package:appdevproject/services/cloudinary_service.dart';
 import 'package:appdevproject/views/profile/user_profile_page.dart';
 import 'package:appdevproject/models/recipe_model.dart';
@@ -17,12 +19,12 @@ class RecipeDetailPage extends StatefulWidget {
 
 class _RecipeDetailPageState extends State<RecipeDetailPage> {
   final RecipeService _recipeService = RecipeService();
+  final CartService   _cartService   = CartService();
 
   bool _isLiked     = false;
   bool _likeLoading = false;
   late int _likeCount;
 
-  // Track mutable recipe data so edits reflect immediately
   late Map<String, dynamic> _data;
 
   @override
@@ -69,16 +71,12 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     }
   }
 
-  // ── ownership ─────────────────────────────────────────────────────────────
-
   bool get _isOwner {
     final uid = Provider.of<UserProvider>(context, listen: false)
         .currentUser
         ?.uid;
     return uid != null && uid == (_data['userId'] as String?);
   }
-
-  // ── delete ────────────────────────────────────────────────────────────────
 
   Future<void> _confirmDelete() async {
     final confirmed = await showDialog<bool>(
@@ -94,8 +92,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child:
-            const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -127,7 +124,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.pop(context, 'deleted'); // signal to caller
+        Navigator.pop(context, 'deleted');
       }
     } catch (e) {
       if (mounted) {
@@ -140,8 +137,6 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
       }
     }
   }
-
-  // ── edit ──────────────────────────────────────────────────────────────────
 
   Future<void> _openEditSheet() async {
     final updated = await showModalBottomSheet<Map<String, dynamic>>(
@@ -170,6 +165,82 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
         ),
       );
     }
+  }
+
+  // ── Add to Cart ───────────────────────────────────────────────────────────
+
+  Future<void> _showAddToCartSheet() async {
+    final uid = Provider.of<UserProvider>(context, listen: false)
+        .currentUser
+        ?.uid;
+    if (uid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to use the cart.')),
+      );
+      return;
+    }
+
+    // Build the ingredients list from the recipe data.
+    final ingredients = _buildIngredientsForCart();
+    if (ingredients.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This recipe has no ingredients listed.')),
+      );
+      return;
+    }
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AddToCartSheet(
+        uid:          uid,
+        recipeId:     _data['id'] as String,
+        recipeName:   _data['recipeName'] as String? ?? 'Untitled',
+        ingredients:  ingredients,
+        cartService:  _cartService,
+      ),
+    );
+  }
+
+  /// Normalises the Firestore ingredients field into a flat list so we can
+  /// support both the current single-map format and a future list format.
+  List<Map<String, dynamic>> _buildIngredientsForCart() {
+    final raw = _data['ingredients'];
+    if (raw == null) return [];
+
+    if (raw is Map<String, dynamic>) {
+      // Current format: single ingredient stored as a map.
+      final name = (raw['name'] ?? '').toString().trim();
+      if (name.isEmpty) return [];
+      return [
+        {
+          'name':   name,
+          'amount': raw['amount'] ?? 0,
+          'unit':   (raw['unit'] ?? '').toString().trim(),
+        }
+      ];
+    }
+
+    if (raw is List) {
+      // Future-proof: list of ingredient maps.
+      final result = <Map<String, dynamic>>[];
+      for (final item in raw) {
+        if (item is Map<String, dynamic>) {
+          final name = (item['name'] ?? '').toString().trim();
+          if (name.isNotEmpty) {
+            result.add({
+              'name':   name,
+              'amount': item['amount'] ?? 0,
+              'unit':   (item['unit'] ?? '').toString().trim(),
+            });
+          }
+        }
+      }
+      return result;
+    }
+
+    return [];
   }
 
   // ── helpers ───────────────────────────────────────────────────────────────
@@ -224,7 +295,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
       backgroundColor: Colors.white,
       body: CustomScrollView(
         slivers: [
-          // ── hero image app bar ───────────────────────────────────────────
+          // ── hero image app bar ─────────────────────────────────────────────
           SliverAppBar(
             expandedHeight: 280,
             pinned: true,
@@ -240,7 +311,20 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
               ),
             ),
             actions: [
-              // Like button (always visible)
+              // Add to Cart button
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: CircleAvatar(
+                  backgroundColor: Colors.black.withOpacity(0.35),
+                  child: IconButton(
+                    icon: const Icon(Icons.add_shopping_cart_rounded,
+                        color: Colors.white),
+                    tooltip: 'Add to cart',
+                    onPressed: _showAddToCartSheet,
+                  ),
+                ),
+              ),
+              // Like button
               Padding(
                 padding: const EdgeInsets.all(8),
                 child: CircleAvatar(
@@ -253,17 +337,19 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                   )
                       : IconButton(
                     icon: Icon(
-                      _isLiked ? Icons.favorite : Icons.favorite_border,
+                      _isLiked
+                          ? Icons.favorite
+                          : Icons.favorite_border,
                       color: _isLiked ? Colors.red : Colors.white,
                     ),
                     onPressed: _toggleLike,
                   ),
                 ),
               ),
-              // Owner: edit & delete buttons
               if (isOwner) ...[
                 Padding(
-                  padding: const EdgeInsets.only(top: 8, bottom: 8, right: 4),
+                  padding:
+                  const EdgeInsets.only(top: 8, bottom: 8, right: 4),
                   child: CircleAvatar(
                     backgroundColor: Colors.black.withOpacity(0.35),
                     child: IconButton(
@@ -275,7 +361,8 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.only(top: 8, bottom: 8, right: 8),
+                  padding:
+                  const EdgeInsets.only(top: 8, bottom: 8, right: 8),
                   child: CircleAvatar(
                     backgroundColor: Colors.red.withOpacity(0.75),
                     child: IconButton(
@@ -322,14 +409,13 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
             ),
           ),
 
-          // ── content ──────────────────────────────────────────────────────
+          // ── content ───────────────────────────────────────────────────────
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Owner action bar (secondary, below hero)
                   if (isOwner)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 16),
@@ -474,7 +560,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Likes + dietary tags
+                  // Likes + dietary tags + Add to Cart
                   Row(children: [
                     Icon(
                       _isLiked ? Icons.favorite : Icons.favorite_border,
@@ -483,19 +569,36 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                     ),
                     const SizedBox(width: 4),
                     Text('$_likeCount likes',
-                        style:
-                        TextStyle(fontSize: 13, color: Colors.grey[600])),
+                        style: TextStyle(
+                            fontSize: 13, color: Colors.grey[600])),
                     if (dietary.isNotEmpty) ...[
                       const SizedBox(width: 12),
                       _tag(dietary.toLowerCase()),
                     ],
+                    const Spacer(),
+                    // ── Add to Cart inline button ──────────────────────────
+                    ElevatedButton.icon(
+                      onPressed: _showAddToCartSheet,
+                      icon: const Icon(Icons.add_shopping_cart_rounded,
+                          size: 16),
+                      label: const Text('Add to Cart',
+                          style: TextStyle(fontSize: 13)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20)),
+                        elevation: 0,
+                      ),
+                    ),
                   ]),
 
                   const SizedBox(height: 20),
                   const Divider(),
                   const SizedBox(height: 12),
 
-                  // Description
                   if (desc.isNotEmpty) ...[
                     _sectionHeader(Icons.description_outlined, 'About'),
                     const SizedBox(height: 8),
@@ -509,7 +612,6 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                     const SizedBox(height: 12),
                   ],
 
-                  // Ingredients
                   _sectionHeader(Icons.list_alt_outlined, 'Ingredients'),
                   const SizedBox(height: 12),
                   if (ingredients != null)
@@ -526,7 +628,6 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                   const Divider(),
                   const SizedBox(height: 12),
 
-                  // Instructions
                   _sectionHeader(
                       Icons.format_list_numbered_outlined, 'Instructions'),
                   const SizedBox(height: 12),
@@ -645,7 +746,467 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Edit Recipe Bottom Sheet
+// Add to Cart Bottom Sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AddToCartSheet extends StatefulWidget {
+  final String                     uid;
+  final String                     recipeId;
+  final String                     recipeName;
+  final List<Map<String, dynamic>> ingredients;
+  final CartService                cartService;
+
+  const _AddToCartSheet({
+    required this.uid,
+    required this.recipeId,
+    required this.recipeName,
+    required this.ingredients,
+    required this.cartService,
+  });
+
+  @override
+  State<_AddToCartSheet> createState() => _AddToCartSheetState();
+}
+
+class _AddToCartSheetState extends State<_AddToCartSheet> {
+  List<Map<String, dynamic>> _lists = [];
+  String? _selectedListId;
+  bool _isLoading   = true;
+  bool _isAdding    = false;
+
+  final _newListCtrl = TextEditingController();
+  bool _showNewInput = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLists();
+  }
+
+  @override
+  void dispose() {
+    _newListCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadLists() async {
+    try {
+      final lists = await widget.cartService.getLists(widget.uid);
+      if (mounted) {
+        setState(() {
+          _lists          = lists;
+          _selectedListId = lists.isNotEmpty ? lists.first['id'] as String : null;
+          _isLoading      = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _addToCart() async {
+    if (_isAdding) return;
+
+    // Create a new list if the user typed a name.
+    String? targetId = _selectedListId;
+    if (_showNewInput) {
+      final name = _newListCtrl.text.trim();
+      if (name.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a list name.')),
+        );
+        return;
+      }
+      setState(() => _isAdding = true);
+      try {
+        targetId = await widget.cartService.createList(widget.uid, name);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to create list: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        setState(() => _isAdding = false);
+        return;
+      }
+    }
+
+    if (targetId == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Select a list first.')));
+      return;
+    }
+
+    setState(() => _isAdding = true);
+
+    try {
+      await widget.cartService.addRecipeToList(
+        userId:      widget.uid,
+        listId:      targetId,
+        recipeId:    widget.recipeId,
+        recipeName:  widget.recipeName,
+        ingredients: widget.ingredients,
+      );
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(children: [
+              const Icon(Icons.check_circle_outline,
+                  color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Added to "${_showNewInput ? _newListCtrl.text.trim() : (_lists.firstWhere((l) => l['id'] == targetId, orElse: () => {'name': 'list'})['name'])}"',
+                ),
+              ),
+            ]),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to add to cart: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isAdding = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.45,
+      maxChildSize: 0.85,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // ── handle ─────────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Column(children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2)),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(children: [
+                    const Icon(Icons.add_shopping_cart_rounded,
+                        color: Colors.orange, size: 22),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Add to Shopping List',
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Navigator.pop(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ]),
+                ]),
+              ),
+
+              const Divider(height: 20),
+
+              // ── recipe info ────────────────────────────────────────────────
+              Padding(
+                padding:
+                const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Icon(Icons.restaurant_menu,
+                            size: 14, color: Colors.orange.shade700),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            widget.recipeName,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade800,
+                            ),
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 8),
+                      ...widget.ingredients.map((ing) {
+                        final amount =
+                        ing['amount'] != null && ing['amount'] != 0
+                            ? '${ing['amount']} '
+                            : '';
+                        final unit = (ing['unit'] ?? '').toString().trim();
+                        final detail = '$amount$unit'.trim();
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 3),
+                          child: Row(children: [
+                            Container(
+                              width: 5,
+                              height: 5,
+                              margin:
+                              const EdgeInsets.only(right: 8, top: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade400,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                ing['name']?.toString() ?? '',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.orange.shade900),
+                              ),
+                            ),
+                            if (detail.isNotEmpty)
+                              Text(
+                                detail,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange.shade700),
+                              ),
+                          ]),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // ── list selection ─────────────────────────────────────────────
+              Expanded(
+                child: _isLoading
+                    ? const Center(
+                    child: CircularProgressIndicator(
+                        color: Colors.orange))
+                    : ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 20),
+                  children: [
+                    Text('Choose a list',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700])),
+                    const SizedBox(height: 10),
+
+                    // Existing lists
+                    ..._lists.map((list) {
+                      final id   = list['id'] as String;
+                      final name = list['name'] as String? ?? '';
+                      final isSelected = !_showNewInput &&
+                          _selectedListId == id;
+
+                      return GestureDetector(
+                        onTap: () => setState(() {
+                          _selectedListId = id;
+                          _showNewInput   = false;
+                        }),
+                        child: AnimatedContainer(
+                          duration:
+                          const Duration(milliseconds: 150),
+                          margin:
+                          const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Colors.orange.shade50
+                                : Colors.grey[50],
+                            borderRadius:
+                            BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Colors.orange
+                                  : Colors.grey.shade200,
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          child: Row(children: [
+                            Icon(
+                              isSelected
+                                  ? Icons.radio_button_checked
+                                  : Icons.radio_button_off,
+                              size: 20,
+                              color: isSelected
+                                  ? Colors.orange
+                                  : Colors.grey[400],
+                            ),
+                            const SizedBox(width: 12),
+                            Icon(Icons.list_alt_rounded,
+                                size: 16,
+                                color: isSelected
+                                    ? Colors.orange
+                                    : Colors.grey[500]),
+                            const SizedBox(width: 8),
+                            Text(
+                              name,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: isSelected
+                                    ? Colors.orange.shade800
+                                    : Colors.black87,
+                              ),
+                            ),
+                          ]),
+                        ),
+                      );
+                    }),
+
+                    // Create new list option
+                    GestureDetector(
+                      onTap: () => setState(
+                              () => _showNewInput = true),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: _showNewInput
+                              ? Colors.orange.shade50
+                              : Colors.grey[50],
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: _showNewInput
+                                ? Colors.orange
+                                : Colors.grey.shade200,
+                            width: _showNewInput ? 2 : 1,
+                          ),
+                        ),
+                        child: Row(children: [
+                          Icon(
+                            _showNewInput
+                                ? Icons.radio_button_checked
+                                : Icons.add_circle_outline,
+                            size: 20,
+                            color: _showNewInput
+                                ? Colors.orange
+                                : Colors.grey[500],
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _showNewInput
+                                ? TextField(
+                              controller: _newListCtrl,
+                              autofocus: true,
+                              textCapitalization:
+                              TextCapitalization.words,
+                              decoration: InputDecoration(
+                                hintText:
+                                'e.g. Sunday BBQ…',
+                                hintStyle: TextStyle(
+                                    color:
+                                    Colors.grey[400]),
+                                border: InputBorder.none,
+                                contentPadding:
+                                EdgeInsets.zero,
+                                isDense: true,
+                              ),
+                              style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight:
+                                  FontWeight.w600),
+                            )
+                                : Text(
+                              'Create new list',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ),
+                        ]),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+
+              // ── confirm button ─────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: (_selectedListId != null || _showNewInput) &&
+                        !_isAdding
+                        ? _addToCart
+                        : null,
+                    icon: _isAdding
+                        ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                        : const Icon(Icons.add_shopping_cart_rounded,
+                        size: 18),
+                    label: Text(
+                      _isAdding ? 'Adding…' : 'Add to List',
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: Colors.orange.shade200,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Edit Recipe Bottom Sheet (unchanged from original)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EditRecipeSheet extends StatefulWidget {
@@ -668,9 +1229,9 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
   late final TextEditingController _ingAmountController;
   late final TextEditingController _ingUnitController;
 
-  late Diffculty  _selectedDifficulty;
-  late Category?  _selectedCategory;
-  late DietaryResrictions? _selectedRestriction;
+  late Diffculty             _selectedDifficulty;
+  late Category?             _selectedCategory;
+  late DietaryResrictions?   _selectedRestriction;
 
   bool _isSaving = false;
 
@@ -678,15 +1239,16 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
   void initState() {
     super.initState();
     final d = widget.data;
-    _titleController        = TextEditingController(text: d['recipeName']  as String? ?? '');
-    _descriptionController  = TextEditingController(text: d['description'] as String? ?? '');
-    _prepTimeController     = TextEditingController(text: '${(d['prepTime'] as num?)?.toInt() ?? 0}');
-    _cookTimeController     = TextEditingController(text: '${(d['cookTime'] as num?)?.toInt() ?? 0}');
-    _servingsController     = TextEditingController(text: '${(d['servings'] as num?)?.toInt() ?? 1}');
+    _titleController       = TextEditingController(text: d['recipeName']  as String? ?? '');
+    _descriptionController = TextEditingController(text: d['description'] as String? ?? '');
+    _prepTimeController    = TextEditingController(text: '${(d['prepTime'] as num?)?.toInt() ?? 0}');
+    _cookTimeController    = TextEditingController(text: '${(d['cookTime'] as num?)?.toInt() ?? 0}');
+    _servingsController    = TextEditingController(text: '${(d['servings'] as num?)?.toInt() ?? 1}');
 
     final instrList = (d['instructions'] as List<dynamic>?)
         ?.map((e) => e.toString())
-        .join('\n') ?? '';
+        .join('\n') ??
+        '';
     _instructionsController = TextEditingController(text: instrList);
 
     final ing = d['ingredients'] as Map<String, dynamic>?;
@@ -731,13 +1293,13 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
     }
 
     final updated = <String, dynamic>{
-      'recipeName':   _titleController.text.trim(),
-      'description':  _descriptionController.text.trim(),
-      'prepTime':     int.tryParse(_prepTimeController.text.trim()) ?? 0,
-      'cookTime':     int.tryParse(_cookTimeController.text.trim()) ?? 0,
-      'servings':     int.tryParse(_servingsController.text.trim()) ?? 1,
-      'difficulty':   _selectedDifficulty.name,
-      'category':     _selectedCategory?.name ?? '',
+      'recipeName':          _titleController.text.trim(),
+      'description':         _descriptionController.text.trim(),
+      'prepTime':            int.tryParse(_prepTimeController.text.trim()) ?? 0,
+      'cookTime':            int.tryParse(_cookTimeController.text.trim()) ?? 0,
+      'servings':            int.tryParse(_servingsController.text.trim()) ?? 1,
+      'difficulty':          _selectedDifficulty.name,
+      'category':            _selectedCategory?.name ?? '',
       'dietaryRestrictions': _selectedRestriction?.name ?? '',
       'instructions': _instructionsController.text
           .trim()
@@ -745,7 +1307,7 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
           .where((s) => s.isNotEmpty)
           .toList(),
       'ingredients': {
-        'id':     (widget.data['ingredients'] as Map?)?.containsKey('id') == true
+        'id': (widget.data['ingredients'] as Map?)?.containsKey('id') == true
             ? widget.data['ingredients']['id']
             : 0,
         'name':   _ingNameController.text.trim(),
@@ -771,7 +1333,6 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
           ),
           child: Column(
             children: [
-              // Handle + header
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                 child: Column(children: [
@@ -787,11 +1348,9 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Edit Recipe',
-                        style: TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.bold),
-                      ),
+                      const Text('Edit Recipe',
+                          style: TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.bold)),
                       Row(children: [
                         TextButton(
                           onPressed: () => Navigator.pop(context),
@@ -814,7 +1373,8 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
+                                strokeWidth: 2,
+                                color: Colors.white),
                           )
                               : const Text('Save'),
                         ),
@@ -824,8 +1384,6 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
                 ]),
               ),
               const Divider(height: 16),
-
-              // Form fields
               Expanded(
                 child: ListView(
                   controller: scrollController,
@@ -834,12 +1392,10 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
                     _label('Recipe Title *'),
                     _field(_titleController, 'Enter recipe title'),
                     const SizedBox(height: 16),
-
                     _label('Description'),
                     _field(_descriptionController, 'Describe your recipe…',
                         maxLines: 3),
                     const SizedBox(height: 16),
-
                     Row(children: [
                       Expanded(child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -856,7 +1412,6 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
                           ])),
                     ]),
                     const SizedBox(height: 16),
-
                     Row(children: [
                       Expanded(child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -878,7 +1433,6 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
                           ])),
                     ]),
                     const SizedBox(height: 16),
-
                     _label('Category'),
                     _dropdown<Category>(
                       value: _selectedCategory,
@@ -887,7 +1441,6 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
                           setState(() => _selectedCategory = v),
                     ),
                     const SizedBox(height: 16),
-
                     _label('Dietary Restriction'),
                     _dropdown<DietaryResrictions>(
                       value: _selectedRestriction,
@@ -896,25 +1449,17 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
                           setState(() => _selectedRestriction = v),
                     ),
                     const SizedBox(height: 16),
-
                     _label('Ingredient'),
                     Row(children: [
-                      Expanded(
-                          flex: 2,
-                          child:
-                          _field(_ingNameController, 'Name')),
+                      Expanded(flex: 2, child: _field(_ingNameController, 'Name')),
                       const SizedBox(width: 8),
-                      Expanded(
-                          child: _field(_ingAmountController, 'Qty')),
+                      Expanded(child: _field(_ingAmountController, 'Qty')),
                       const SizedBox(width: 8),
-                      Expanded(
-                          child: _field(_ingUnitController, 'Unit')),
+                      Expanded(child: _field(_ingUnitController, 'Unit')),
                     ]),
                     const SizedBox(height: 16),
-
                     _label('Instructions (one step per line)'),
-                    _field(_instructionsController,
-                        'Step 1…\nStep 2…\nStep 3…',
+                    _field(_instructionsController, 'Step 1…\nStep 2…',
                         maxLines: 6),
                   ],
                 ),
@@ -925,8 +1470,6 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
       },
     );
   }
-
-  // ── helpers ───────────────────────────────────────────────────────────────
 
   Widget _label(String text) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
@@ -971,7 +1514,8 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
           child: DropdownButton<T>(
             value: value,
             isExpanded: true,
-            icon: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
+            icon:
+            const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
             items: items
                 .map((item) => DropdownMenuItem<T>(
               value: item,
