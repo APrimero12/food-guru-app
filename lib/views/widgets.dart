@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:appdevproject/services/cloudinary_service.dart';
-import 'package:appdevproject/services/cloudinary_service.dart';
-import 'package:appdevproject/services/cloudinary_service.dart';
 
 class RecipeCard extends StatelessWidget {
   final String imageUrl;

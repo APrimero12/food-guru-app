@@ -11,10 +11,6 @@ class UserModel {
   final Timestamp? createdAt; // When the user record was first created in Firestore
   final Timestamp? lastActive; // Optional: To track last activity
 
-  // connection to the user collection in Firestore server
-  final CollectionReference _usersCollection =
-  FirebaseFirestore.instance.collection('users');
-
   UserModel({
     required this.uid,
     this.name,

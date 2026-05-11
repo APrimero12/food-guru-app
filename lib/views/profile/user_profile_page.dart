@@ -6,7 +6,6 @@ import 'package:appdevproject/services/follow_service.dart';
 import 'package:appdevproject/services/recipe_services.dart';
 import 'package:appdevproject/services/user_services.dart';
 import 'package:appdevproject/services/cloudinary_service.dart';
-import 'package:appdevproject/services/cloudinary_service.dart';
 import 'package:appdevproject/views/recipe/recipe_detail_page.dart';
 
 class UserProfilePage extends StatefulWidget {
