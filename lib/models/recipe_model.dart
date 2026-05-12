@@ -1,4 +1,3 @@
-import 'comments_model.dart';
 import 'user_model.dart';
 
 class RecipeModel {
@@ -11,7 +10,6 @@ class RecipeModel {
   String description;
   String createdAt;
   int likes;
-  CommentsModel comments;
 
   // this is what has to do with the recipe
   int prepTime;
@@ -23,7 +21,7 @@ class RecipeModel {
   Ingredients ingredients;
 
   RecipeModel(this.recipeId, this.user, this.image, this.recipeName,
-      this.description, this.createdAt, this.likes, this.comments,
+      this.description, this.createdAt, this.likes,
       this.prepTime, this.cookeTime, this.servings, this.diffculty,
       this.category, this.dietaryRestrictions, this.ingredients);
 }

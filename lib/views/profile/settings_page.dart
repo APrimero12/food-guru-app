@@ -285,6 +285,20 @@ class _SettingsPageState extends State<SettingsPage> {
         liveUser.uid,
         {'userName': newName},
       );
+
+      // Update the email in Firebase Auth when it changes (non-Google only).
+      // verifyBeforeUpdateEmail sends a confirmation link before committing,
+      // so the old email remains valid until the user clicks the link.
+      if (newEmail != liveUser.email && !_isGoogleUser) {
+        final authUser = FirebaseAuth.instance.currentUser!;
+        await authUser.verifyBeforeUpdateEmail(newEmail);
+        if (mounted) {
+          _showSnackBar(
+            'Verification email sent to $newEmail. Confirm it before logging in with the new address.',
+          );
+        }
+      }
+
       final updated = UserModel(
         uid: liveUser.uid, name: newName, username: newUsername,
         email: newEmail, bio: newBio, avatar: liveUser.avatar,
@@ -292,8 +306,16 @@ class _SettingsPageState extends State<SettingsPage> {
       );
       if (mounted) {
         Provider.of<UserProvider>(context, listen: false).updateLocalUser(updated);
-        _showSnackBar('Profile updated successfully.');
+        if (newEmail == liveUser.email || _isGoogleUser) {
+          _showSnackBar('Profile updated successfully.');
+        }
       }
+    } on FirebaseAuthException catch (e) {
+      _showSnackBar(switch (e.code) {
+        'requires-recent-login' => 'Please log out and back in, then try again.',
+        'invalid-email'         => 'The new email address is invalid.',
+        _                       => 'Auth error: ${e.message}',
+      }, isError: true);
     } catch (e) {
       _showSnackBar('Failed to update profile: $e', isError: true);
     } finally {

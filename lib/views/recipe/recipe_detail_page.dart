@@ -260,7 +260,15 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     final category   = _data['category']   as String? ?? '';
     final dietary    = _data['dietaryRestrictions'] as String? ?? '';
 
-    final ingredients  = _data['ingredients']  as Map<String, dynamic>?;
+    // Ingredients may be a List (new format) or a Map (legacy single-ingredient).
+    final List<Map<String, dynamic>> ingredientsList = () {
+      final raw = _data['ingredients'];
+      if (raw is List) {
+        return raw.whereType<Map<String, dynamic>>().toList();
+      }
+      if (raw is Map<String, dynamic>) return [raw];
+      return <Map<String, dynamic>>[];
+    }();
     final instructions = (_data['instructions'] as List<dynamic>?)
         ?.map((e) => e.toString())
         .toList() ??
@@ -582,15 +590,15 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
 
                   _sectionHeader(Icons.list_alt_outlined, 'Ingredients'),
                   const SizedBox(height: 12),
-                  if (ingredients != null)
-                    _ingredientRow(
-                      ingredients['name']?.toString() ?? '',
-                      ingredients['amount']?.toString() ?? '',
-                      ingredients['unit']?.toString() ?? '',
-                    )
-                  else
+                  if (ingredientsList.isEmpty)
                     Text('No ingredients listed.',
-                        style: TextStyle(color: Colors.grey[500])),
+                        style: TextStyle(color: Colors.grey[500]))
+                  else
+                    ...ingredientsList.map((ing) => _ingredientRow(
+                      ing['name']?.toString() ?? '',
+                      ing['amount']?.toString() ?? '',
+                      ing['unit']?.toString() ?? '',
+                    )),
 
                   const SizedBox(height: 20),
                   const Divider(),
@@ -1186,9 +1194,8 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
   late final TextEditingController _cookTimeController;
   late final TextEditingController _servingsController;
   late final TextEditingController _instructionsController;
-  late final TextEditingController _ingNameController;
-  late final TextEditingController _ingAmountController;
-  late final TextEditingController _ingUnitController;
+
+  late List<Map<String, TextEditingController>> _ingredients;
 
   late Diffculty             _selectedDifficulty;
   late Category?             _selectedCategory;
@@ -1212,10 +1219,23 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
         '';
     _instructionsController = TextEditingController(text: instrList);
 
-    final ing = d['ingredients'] as Map<String, dynamic>?;
-    _ingNameController   = TextEditingController(text: ing?['name']?.toString()   ?? '');
-    _ingAmountController = TextEditingController(text: ing?['amount']?.toString() ?? '');
-    _ingUnitController   = TextEditingController(text: ing?['unit']?.toString()   ?? '');
+    // Support both List (new format) and Map (legacy single-ingredient).
+    final rawIng = d['ingredients'];
+    List<Map<String, dynamic>> ingList;
+    if (rawIng is List) {
+      ingList = rawIng.whereType<Map<String, dynamic>>().toList();
+    } else if (rawIng is Map<String, dynamic>) {
+      ingList = [rawIng];
+    } else {
+      ingList = [];
+    }
+    if (ingList.isEmpty) ingList = [{}];
+
+    _ingredients = ingList.map((ing) => {
+      'name':   TextEditingController(text: ing['name']?.toString()   ?? ''),
+      'amount': TextEditingController(text: ing['amount']?.toString() ?? ''),
+      'unit':   TextEditingController(text: ing['unit']?.toString()   ?? ''),
+    }).toList();
 
     _selectedDifficulty = Diffculty.values.firstWhere(
           (e) => e.name == (d['difficulty'] as String?),
@@ -1239,10 +1259,32 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
     _cookTimeController.dispose();
     _servingsController.dispose();
     _instructionsController.dispose();
-    _ingNameController.dispose();
-    _ingAmountController.dispose();
-    _ingUnitController.dispose();
+    for (final row in _ingredients) {
+      row['name']?.dispose();
+      row['amount']?.dispose();
+      row['unit']?.dispose();
+    }
     super.dispose();
+  }
+
+  void _addIngredient() {
+    setState(() {
+      _ingredients.add({
+        'name':   TextEditingController(),
+        'amount': TextEditingController(),
+        'unit':   TextEditingController(),
+      });
+    });
+  }
+
+  void _removeIngredient(int index) {
+    if (_ingredients.length == 1) return;
+    setState(() {
+      _ingredients[index]['name']?.dispose();
+      _ingredients[index]['amount']?.dispose();
+      _ingredients[index]['unit']?.dispose();
+      _ingredients.removeAt(index);
+    });
   }
 
   void _save() {
@@ -1267,14 +1309,16 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
           .split('\n')
           .where((s) => s.isNotEmpty)
           .toList(),
-      'ingredients': {
-        'id': (widget.data['ingredients'] as Map?)?.containsKey('id') == true
-            ? widget.data['ingredients']['id']
-            : 0,
-        'name':   _ingNameController.text.trim(),
-        'amount': int.tryParse(_ingAmountController.text.trim()) ?? 0,
-        'unit':   _ingUnitController.text.trim(),
-      },
+      'ingredients': _ingredients
+          .asMap()
+          .entries
+          .map((e) => {
+                'id':     e.key,
+                'name':   e.value['name']!.text.trim(),
+                'amount': int.tryParse(e.value['amount']!.text.trim()) ?? 0,
+                'unit':   e.value['unit']!.text.trim(),
+              })
+          .toList(),
     };
 
     Navigator.pop(context, updated);
@@ -1410,14 +1454,43 @@ class _EditRecipeSheetState extends State<_EditRecipeSheet> {
                           setState(() => _selectedRestriction = v),
                     ),
                     const SizedBox(height: 16),
-                    _label('Ingredient'),
-                    Row(children: [
-                      Expanded(flex: 2, child: _field(_ingNameController, 'Name')),
-                      const SizedBox(width: 8),
-                      Expanded(child: _field(_ingAmountController, 'Qty')),
-                      const SizedBox(width: 8),
-                      Expanded(child: _field(_ingUnitController, 'Unit')),
-                    ]),
+                    _label('Ingredients'),
+                    ...List.generate(_ingredients.length, (i) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(children: [
+                        Expanded(flex: 2, child: _field(_ingredients[i]['name']!, 'Name')),
+                        const SizedBox(width: 8),
+                        Expanded(child: _field(_ingredients[i]['amount']!, 'Qty')),
+                        const SizedBox(width: 8),
+                        Expanded(child: _field(_ingredients[i]['unit']!, 'Unit')),
+                        const SizedBox(width: 4),
+                        if (i > 0)
+                          GestureDetector(
+                            onTap: () => _removeIngredient(i),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(Icons.remove_circle_outline,
+                                  color: Colors.red, size: 20),
+                            ),
+                          )
+                        else
+                          const SizedBox(width: 28),
+                      ]),
+                    )),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: InkWell(
+                        onTap: _addIngredient,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A1C1E),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.add, color: Colors.white, size: 20),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     _label('Instructions (one step per line)'),
                     _field(_instructionsController, 'Step 1…\nStep 2…',

@@ -449,12 +449,26 @@ class _ExploreContentState extends State<ExploreContent> {
                         // ← Now driven by UserProvider, consistent across all pages
                         isLiked: userProvider.isLiked(recipeId),
                         onLikeTapped: () => _toggleLike(recipeId),
-                        onTapped: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => RecipeDetailPage(data: data),
-                          ),
-                        ),
+                        onTapped: () {
+                          final wasLiked = userProvider.isLiked(recipeId);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => RecipeDetailPage(data: data),
+                            ),
+                          ).then((_) {
+                            if (!mounted) return;
+                            final nowLiked = Provider.of<UserProvider>(
+                              context,
+                              listen: false,
+                            ).isLiked(recipeId);
+                            if (nowLiked != wasLiked) {
+                              _updateCount(_recipes, recipeId, nowLiked ? 1 : -1);
+                              _updateCount(_filteredRecipes, recipeId, nowLiked ? 1 : -1);
+                              setState(() {});
+                            }
+                          });
+                        },
                       );
                     },
                     childCount: displayList.length,

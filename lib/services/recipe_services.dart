@@ -63,7 +63,7 @@ class RecipeService {
     required Diffculty difficulty,
     required Category category,
     required DietaryResrictions dietaryRestrictions,
-    required Ingredients ingredients,
+    required List<Ingredients> ingredients,
     List<Instruction>? instructions,
   }) async {
     try {
@@ -85,7 +85,7 @@ class RecipeService {
         'difficulty':           difficulty.name,
         'category':             category.name,
         'dietaryRestrictions':  dietaryRestrictions.name,
-        'ingredients':          _ingredientsToMap(ingredients),
+        'ingredients':          ingredients.map(_ingredientsToMap).toList(),
         'instructions':
         instructions?.map((i) => i.steps).toList() ?? [],
       };

@@ -149,7 +149,7 @@ class _ProfilePageState extends State<ProfilePage>
 
     return NestedScrollView(
       headerSliverBuilder: (context, innerBoxIsScrolled) => [
-        SliverToBoxAdapter(child: _buildHeader()),
+        SliverToBoxAdapter(child: _buildHeader(userProvider)),
         SliverPersistentHeader(
           pinned: true,
           delegate: _StickyTabBarDelegate(
@@ -166,7 +166,7 @@ class _ProfilePageState extends State<ProfilePage>
                 ),
                 Tab(
                   icon: const Icon(Icons.favorite, size: 18),
-                  text: 'Liked (${_likedRecipes.length})',
+                  text: 'Liked (${userProvider.likedRecipeIds.length})',
                 ),
               ],
             ),
@@ -199,7 +199,7 @@ class _ProfilePageState extends State<ProfilePage>
 
   // ── profile header ────────────────────────────────────────────────────────
 
-  Widget _buildHeader() {
+  Widget _buildHeader(UserProvider userProvider) {
     final user = widget.user;
 
     return Column(
@@ -291,7 +291,7 @@ class _ProfilePageState extends State<ProfilePage>
                             '${_myRecipes.length}', 'Recipes'),
                         _divider(),
                         _statItem(Icons.favorite, Colors.red,
-                            '${_likedRecipes.length}', 'Liked'),
+                            '${userProvider.likedRecipeIds.length}', 'Liked'),
                         _divider(),
                         GestureDetector(
                           onTap: widget.onCommunityTapped,

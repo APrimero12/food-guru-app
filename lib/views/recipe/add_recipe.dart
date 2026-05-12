@@ -184,13 +184,17 @@ class _AddRecipeState extends State<AddRecipe> {
 
       setState(() => _uploadProgress = null);
 
-      // 2. Build ingredient (only first row for now — matches the model)
-      final ing = Ingredients(
-        0,
-        _ingredients[0]['name']!.text.trim(),
-        int.tryParse(_ingredients[0]['amount']!.text.trim()) ?? 0,
-        _ingredients[0]['unit']!.text.trim(),
-      );
+      // 2. Build ingredient list from all rows.
+      final ingredientsList = _ingredients
+          .asMap()
+          .entries
+          .map((e) => Ingredients(
+                e.key,
+                e.value['name']!.text.trim(),
+                int.tryParse(e.value['amount']!.text.trim()) ?? 0,
+                e.value['unit']!.text.trim(),
+              ))
+          .toList();
 
       // 3. Save to Firestore
       await RecipeService().createRecipe(
@@ -206,7 +210,7 @@ class _AddRecipeState extends State<AddRecipe> {
         dietaryRestrictions: _selectedRestrictions.isNotEmpty
             ? _selectedRestrictions.first
             : DietaryResrictions.Vegan,
-        ingredients: ing,
+        ingredients: ingredientsList,
         instructions: _instructionsController.text.trim().isNotEmpty
             ? [Instruction(_instructionsController.text.trim())]
             : null,

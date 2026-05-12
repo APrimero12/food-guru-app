@@ -137,8 +137,9 @@ class UserProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void clearUser() {
-    flushAllPending();
+  Future<void> clearUser() async {
+    // Flush first so _pendingLiked is still populated when _flushLike reads it.
+    await flushAllPending();
     _currentUser = null;
     _likedRecipeIds.clear();
     _pendingLiked.clear();
