@@ -1,7 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // Import provider
+import 'package:provider/provider.dart';
 import '../../services/auth.dart';
+import 'package:appdevproject/views/home_navigation.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -16,7 +17,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  // Removed: final _authService = AuthService(); // Will be accessed via Provider
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
   bool _isLoading = false;
@@ -25,18 +25,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   void dispose() {
     _fullNameController.dispose();
-    _emailController.dispose();
+    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  /**
-   * This function handles the signup for a new user
-   */
+  // ── Email/password sign-up ─────────────────────────────────────────────────
+
   Future<void> _signUp() async {
-    final authService = Provider.of<AuthService>(context, listen: false); // Access AuthService via Provider
+    final authService = Provider.of<AuthService>(context, listen: false);
 
     final fullName = _fullNameController.text.trim();
     final username = _usernameController.text.trim();
@@ -44,8 +43,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final password = _passwordController.text;
     final confirm = _confirmPasswordController.text;
 
-    if (fullName.isEmpty || username.isEmpty || email.isEmpty
-        || password.isEmpty || confirm.isEmpty) {
+    if (fullName.isEmpty ||
+        username.isEmpty ||
+        email.isEmpty ||
+        password.isEmpty ||
+        confirm.isEmpty) {
       setState(() => _errorMessage = 'Please fill in all fields.');
       return;
     }
@@ -54,7 +56,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
     if (password.length < 6) {
-      setState(() => _errorMessage = 'Password must be at least 6 characters.');
+      setState(() =>
+      _errorMessage = 'Password must be at least 6 characters.');
       return;
     }
 
@@ -64,13 +67,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      await authService.signUp(email: email, password: password, name: fullName, username: username);
-      // Removed: if (mounted) Navigator.pushReplacementNamed(context, '/home');
-      // AuthWrapper in main.dart will handle navigation based on auth state change.
-      // After successful email/password signup, you might want to automatically
-      // navigate back to the login page, or directly to home if Firebase logs them in immediately.
-      // For now, I'll pop to the previous screen (likely Login).
-      if (mounted) Navigator.pop(context); // Go back to login after successful signup
+      await authService.signUp(
+        email: email,
+        password: password,
+        name: fullName,
+        username: username,
+      );
+      if (mounted) Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = _friendlyError(e.code));
     } finally {
@@ -78,9 +81,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  // New method for Google Sign-Up/Sign-In
+  // ── Google Sign-Up ─────────────────────────────────────────────────────────
+  //
+  // FIXED: Delegate entirely to authService.signInWithGoogle().
+  // No pre-checks or manual GoogleSignIn().signIn() calls here.
+
   Future<void> _signUpWithGoogle() async {
-    final authService = Provider.of<AuthService>(context, listen: false); // Access AuthService via Provider
+    final authService = Provider.of<AuthService>(context, listen: false);
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -88,20 +96,31 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     try {
       final userCredential = await authService.signInWithGoogle();
+
       if (userCredential == null) {
-        // User cancelled the sign-in flow
-        setState(() => _errorMessage = 'Google Sign-Up/In cancelled.');
+        setState(() => _errorMessage = null);
+        return;
       }
-      // No explicit navigation here either; AuthWrapper handles it.
+
+      // Navigate to home and clear the entire navigation stack
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const MyExplorePage()),
+              (route) => false,
+        );
+      }
+
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = _friendlyError(e.code));
     } catch (e) {
-      // General error, e.g., from google_sign_in plugin itself
-      setState(() => _errorMessage = 'An unexpected error occurred during Google Sign-Up/In.');
+      setState(() => _errorMessage =
+      'An unexpected error occurred. Please try again.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  // ── Error messages ─────────────────────────────────────────────────────────
 
   String _friendlyError(String code) {
     switch (code) {
@@ -112,17 +131,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
       case 'weak-password':
         return 'Password is too weak. Use at least 6 characters.';
       case 'operation-not-allowed':
-        return 'Email/password sign-up is not enabled.';
+        return 'This sign-in method is not enabled.';
       case 'account-exists-with-different-credential':
-        return 'An account already exists with the same email address but different sign-in credentials. Please sign in with the associated method.';
-      case 'cancelled-by-user': // Specific to Google Sign-In often
-        return 'Sign-in cancelled by user.';
+        return 'An account already exists with this email using a different sign-in method.';
       default:
-      // You can add more specific error codes here if needed,
-      // especially for Google Sign-In specific FirebaseAuthException codes.
-        return 'Sign up failed. Please try again. Code: $code';
+        return 'Sign up failed. Please try again.';
     }
   }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -174,36 +191,41 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       ),
                     ),
                     SizedBox(height: 24),
-                    // User sign up full name inputs
-                    Text('Full Name', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text('Full Name',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                     SizedBox(height: 4),
                     TextField(
                       controller: _fullNameController,
-                      decoration: InputDecoration(border: OutlineInputBorder()),
+                      decoration:
+                      InputDecoration(border: OutlineInputBorder()),
                       keyboardType: TextInputType.name,
                       enabled: !_isLoading,
                     ),
-                    // user username inputs
-                    Text('Username', style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(height: 12),
+                    Text('Username',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                     SizedBox(height: 4),
                     TextField(
                       controller: _usernameController,
-                      decoration: InputDecoration(border: OutlineInputBorder()),
+                      decoration:
+                      InputDecoration(border: OutlineInputBorder()),
                       keyboardType: TextInputType.name,
                       enabled: !_isLoading,
                     ),
-                    // user email inputs
-                    Text('Email', style: TextStyle(fontWeight: FontWeight.bold)),
+                    SizedBox(height: 12),
+                    Text('Email',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                     SizedBox(height: 4),
                     TextField(
                       controller: _emailController,
-                      decoration: InputDecoration(border: OutlineInputBorder()),
+                      decoration:
+                      InputDecoration(border: OutlineInputBorder()),
                       keyboardType: TextInputType.emailAddress,
                       enabled: !_isLoading,
                     ),
                     SizedBox(height: 16),
-                    // user password inputs
-                    Text('Password', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text('Password',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                     SizedBox(height: 4),
                     TextField(
                       controller: _passwordController,
@@ -213,15 +235,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           icon: Icon(_isPasswordVisible
                               ? Icons.visibility
                               : Icons.visibility_off),
-                          onPressed: () => setState(
-                                  () => _isPasswordVisible = !_isPasswordVisible),
+                          onPressed: () => setState(() =>
+                          _isPasswordVisible = !_isPasswordVisible),
                         ),
                       ),
                       obscureText: !_isPasswordVisible,
                       enabled: !_isLoading,
                     ),
                     SizedBox(height: 16),
-                    // user confirm password inputs
                     Text('Confirm Password',
                         style: TextStyle(fontWeight: FontWeight.bold)),
                     SizedBox(height: 4),
@@ -246,7 +267,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       SizedBox(height: 12),
                       Text(
                         _errorMessage!,
-                        style: TextStyle(color: Colors.red, fontSize: 13),
+                        style:
+                        TextStyle(color: Colors.red, fontSize: 13),
                       ),
                     ],
                     SizedBox(height: 20),
@@ -269,25 +291,22 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         )
                             : Text(
                           'Create Account',
-                          style:
-                          TextStyle(fontSize: 18, color: Colors.white),
-
+                          style: TextStyle(
+                              fontSize: 18, color: Colors.white),
                         ),
                       ),
                     ),
-
-                    SizedBox(height: 10), // Added spacing for new button
-
-                    // New Google Sign-Up Button
+                    SizedBox(height: 10),
                     ElevatedButton.icon(
                       onPressed: _isLoading ? null : _signUpWithGoogle,
                       icon: Image.asset(
-                        'assets/google_logo.png', // Ensure this asset is available
+                        'assets/google_logo.png',
                         height: 24.0,
                       ),
                       label: const Text(
                         'Sign Up with Google',
-                        style: TextStyle(fontSize: 18, color: Colors.black),
+                        style: TextStyle(
+                            fontSize: 18, color: Colors.black),
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
@@ -295,12 +314,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         padding: EdgeInsets.all(15),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
-                          side: BorderSide(color: Colors.grey.shade300),
+                          side:
+                          BorderSide(color: Colors.grey.shade300),
                         ),
                         disabledBackgroundColor: Colors.grey[200],
                       ),
                     ),
-
                     SizedBox(height: 28),
                     Center(
                       child: GestureDetector(
@@ -309,7 +328,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             : () => Navigator.pop(context),
                         child: Text(
                           'Already have an account? Sign in',
-                          style: TextStyle(color: Colors.orange, fontSize: 16),
+                          style: TextStyle(
+                              color: Colors.orange, fontSize: 16),
                         ),
                       ),
                     ),

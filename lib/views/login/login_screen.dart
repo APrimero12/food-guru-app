@@ -1,7 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:provider/provider.dart'; // Import provider
+import 'package:provider/provider.dart';
 import '../../services/auth.dart';
 
 class SignInPage extends StatefulWidget {
@@ -12,7 +11,6 @@ class SignInPage extends StatefulWidget {
 class _SignInPageState extends State<SignInPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  // Removed: final _authService = AuthService(); // Will be accessed via Provider
   bool _isPasswordVisible = false;
   bool _isLoading = false;
   String? _errorMessage;
@@ -24,8 +22,10 @@ class _SignInPageState extends State<SignInPage> {
     super.dispose();
   }
 
+  // ── Email/password sign-in ─────────────────────────────────────────────────
+
   Future<void> _signIn() async {
-    final authService = Provider.of<AuthService>(context, listen: false); // Access AuthService via Provider
+    final authService = Provider.of<AuthService>(context, listen: false);
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
@@ -41,6 +41,7 @@ class _SignInPageState extends State<SignInPage> {
 
     try {
       await authService.signIn(email: email, password: password);
+      // AuthWrapper handles navigation automatically
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = _friendlyError(e.code));
     } finally {
@@ -48,85 +49,44 @@ class _SignInPageState extends State<SignInPage> {
     }
   }
 
-  // VVVV MODIFIED: _signInWithGoogle method for guaranteed pre-check failure VVVV
+  // ── Google Sign-In ─────────────────────────────────────────────────────────
+  //
+  // FIXED: We now simply call authService.signInWithGoogle() and let the
+  // service handle everything. We no longer call GoogleSignIn().signIn()
+  // here — that was causing a double sign-in prompt and a broken pre-check.
+
   Future<void> _signInWithGoogle() async {
+    final authService = Provider.of<AuthService>(context, listen: false);
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final authService = Provider.of<AuthService>(context, listen: false);
+      final userCredential = await authService.signInWithGoogle();
 
-      // 1. Trigger the Google authentication flow to get the user's email
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) {
-        // User cancelled the Google sign-in prompt itself.
-        print('SignInPage Debug: User cancelled Google sign-in.');
-        if (mounted) {
-          setState(() => _errorMessage = 'Google Sign-In cancelled.');
-        }
-        return; // Exit here as user cancelled
+      if (userCredential == null) {
+        // User cancelled — just clear loading state
+        setState(() => _errorMessage = null);
       }
-
-      // VVVV Perform explicit pre-check for existing non-Google accounts VVVV
-      print('SignInPage Debug: Performing pre-check for email: ${googleUser.email}');
-      final List<String> existingSignInMethods = await authService.fetchSignInMethodsForEmail(googleUser.email);
-
-      // Filter out 'google.com' if it's already there (meaning user previously signed up with Google)
-      // or if their account was already linked somehow (though we're avoiding linking now).
-      final otherProviders = existingSignInMethods.where((method) => method != 'google.com').toList();
-
-      if (otherProviders.isNotEmpty) {
-        // VVVV GUARANTEED FAILURE PATH VVVV
-        print('SignInPage Debug: Conflict detected by pre-check. Other providers: $otherProviders');
-        if (mounted) {
-          setState(() => _errorMessage = 'An account with ${googleUser.email} already exists using the  '
-              '${otherProviders.join(', ')} method. Please sign in with your existing method '
-              'or use a different email for Google Sign-In.');
-        }
-        // No further Firebase authentication attempt is made!
-        return; // <--- CRUCIAL: Exit here if conflict found
-        // ^^^^ END GUARANTEED FAILURE PATH ^^^^
-      }
-      // ^^^^ END NEW PRE-CHECK ^^^^
-
-
-      // 2. If pre-check passes, proceed with Firebase authentication
-      // The authService.signInWithGoogle method will now handle the rest
-      // (getting credential, calling FirebaseAuth.instance.signInWithCredential, saving to Firestore).
-      print('SignInPage Debug: Pre-check passed. Calling AuthService.signInWithGoogle...');
-      await authService.signInWithGoogle();
-
-      // If we reach here, Google Sign-In with Firebase was successful.
-      if (mounted) {
-        _showSuccess('Signed in with Google!');
-      }
+      // On success, AuthWrapper handles navigation automatically
 
     } on FirebaseAuthException catch (e) {
-      print('SignInPage DEBUG: FirebaseAuthException caught in UI: code=${e.code}, message=${e.message}');
-      // This catch block will now mostly handle general FirebaseAuth errors,
-      // as the 'account-exists-with-different-credential' should be caught by our pre-check.
-      // However, it's good to keep it for robustness.
       if (mounted) {
-        // Catch our custom error code specifically if it was rethrown (though our pre-check prevents this now)
-        if (e.code == 'email-already-in-use-by-other-provider') {
-          setState(() => _errorMessage = e.message); // Use the message from AuthService
-        } else {
-          setState(() => _errorMessage = _friendlyError(e.code));
-        }
+        setState(() => _errorMessage = _friendlyError(e.code));
       }
     } catch (e) {
-      print('SignInPage DEBUG: General Exception caught in UI: $e');
       if (mounted) {
-        setState(() => _errorMessage = 'An unexpected error occurred during Google Sign-In: $e');
+        setState(() => _errorMessage =
+        'An unexpected error occurred. Please try again.');
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  // ── Error messages ─────────────────────────────────────────────────────────
 
   String _friendlyError(String code) {
     switch (code) {
@@ -143,19 +103,17 @@ class _SignInPageState extends State<SignInPage> {
       case 'invalid-credential':
         return 'Invalid email or password.';
       case 'operation-not-allowed':
-        return 'Email/password sign-in is not enabled.';
-      case 'email-already-in-use-by-other-provider': // NEW: Handle our custom error code
-        return 'An account with this email already exists with a different provider.';
+        return 'This sign-in method is not enabled.';
+      case 'account-exists-with-different-credential':
+        return 'An account already exists with this email using a different sign-in method.';
+      case 'google-sign-in-failed':
+        return 'Google Sign-In failed. Please try again.';
       default:
-        return 'Sign in failed. Please try again. Code: $code';
+        return 'Sign in failed. Please try again.';
     }
   }
 
-  void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.green),
-    );
-  }
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -205,24 +163,24 @@ class _SignInPageState extends State<SignInPage> {
                     ),
                   ),
                   SizedBox(height: 20),
-                  Text('Email', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('Email',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   SizedBox(height: 4),
                   TextField(
                     controller: _emailController,
                     decoration: InputDecoration(
-                      hintText: '',
                       border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.emailAddress,
                     enabled: !_isLoading,
                   ),
                   SizedBox(height: 16),
-                  Text('Password', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('Password',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   SizedBox(height: 4),
                   TextField(
                     controller: _passwordController,
                     decoration: InputDecoration(
-                      hintText: '',
                       border: OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -268,22 +226,22 @@ class _SignInPageState extends State<SignInPage> {
                       )
                           : Text(
                         'Sign In',
-                        style: TextStyle(fontSize: 18, color: Colors.white),
+                        style: TextStyle(
+                            fontSize: 18, color: Colors.white),
                       ),
                     ),
                   ),
                   SizedBox(height: 12),
-
-                  // New Google Sign-In Button
                   ElevatedButton.icon(
                     onPressed: _isLoading ? null : _signInWithGoogle,
                     icon: Image.asset(
-                      'assets/google_logo.png', // You'll need to add this asset
+                      'assets/google_logo.png',
                       height: 24.0,
                     ),
                     label: const Text(
                       'Sign In with Google',
-                      style: TextStyle(fontSize: 18, color: Colors.black),
+                      style:
+                      TextStyle(fontSize: 18, color: Colors.black),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
@@ -296,18 +254,16 @@ class _SignInPageState extends State<SignInPage> {
                       disabledBackgroundColor: Colors.grey[200],
                     ),
                   ),
-
                   SizedBox(height: 12),
                   Center(
                     child: GestureDetector(
-                      onTap: _isLoading
-                          ? null
-                          : () {
-                        // TODO: implement forgot password flow
+                      onTap: _isLoading ? null : () {
+                        // TODO: implement forgot password
                       },
                       child: Text(
                         'Forgot password?',
-                        style: TextStyle(color: Colors.grey, fontSize: 14),
+                        style:
+                        TextStyle(color: Colors.grey, fontSize: 14),
                       ),
                     ),
                   ),

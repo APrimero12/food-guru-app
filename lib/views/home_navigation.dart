@@ -169,18 +169,42 @@ class _MyExplorePageState extends State<MyExplorePage> {
         );
 
       case AppView.homeTabs:
+        final userProvider = Provider.of<UserProvider>(context, listen: false);
         final List<Widget> pages = [
           const ExploreContent(),
           const FriendsPage(),
           const AddRecipe(),
           const CartPage(),
           if (user == null)
-            const Center(child: CircularProgressIndicator())
+            Center(
+              child: userProvider.isLoading
+                  ? const CircularProgressIndicator(color: Colors.orange)
+                  : Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.person_off_outlined,
+                      size: 56, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  const Text('Could not load profile.'),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: () {
+                      final uid = Provider.of<AuthService>(
+                          context, listen: false)
+                          .currentUser
+                          ?.uid;
+                      if (uid != null) userProvider.loadUser(uid);
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            )
           else
             ProfilePage(
               user: user,
               onSettingsTapped: _openSettings,
-              onCommunityTapped: _openCommunity, // ← wired up here
+              onCommunityTapped: _openCommunity,
             ),
         ];
         final safeIndex = _bottomNavIndex.clamp(0, pages.length - 1);
